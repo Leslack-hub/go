@@ -1,0 +1,34 @@
+{
+  "services": [
+    {
+      "id": "core.product-/192.168.16.170:8000",
+      "name": "core.product",
+      "tags": [ "xdp-/core.product" ],
+      "address": "192.168.16.170",
+      "port": 8000,
+      "checks": [
+        {
+          "name": "core.product.check",
+          "http": "http://192.168.16.170:8000/api/health",
+          "interval": "10s",
+          "timeout": "5s"
+        }
+      ]
+    },
+    {
+      "id": "core.product-/192.168.16.170:8001",
+      "name": "core.product",
+      "tags": [ "xdp-/core.product" ],
+      "address": "192.168.16.170",
+      "port": 8001,
+      "checks": [
+        {
+          "name": "core.product.check",
+          "http": "http://192.168.16.170:8001/api/health",
+          "interval": "10s",
+          "timeout": "5s"
+        }
+      ]
+    }
+  ]
+}
