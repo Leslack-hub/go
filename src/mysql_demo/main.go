@@ -5,6 +5,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
+	"strings"
 )
 
 func main() {
@@ -16,7 +17,20 @@ func main() {
 	//查询数据，指定字段名，返回sql.Rows结果集
 	var moego_code, nickname string
 
-	rows, err := db.Query("select moego_code,nickname from user where id in (?,?)", 6836, 7430)
+	idAry := []string{"1", "2", "3"}
+	ids := strings.Join(idAry, "','")
+	sqlRaw := fmt.Sprintf(`SELECT moego_code,nickname FROM user WHERE id IN ('%s')`, ids)
+	rows, err := db.Query(sqlRaw)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for rows.Next() {
+		rows.Scan(&moego_code, &nickname)
+		fmt.Println(moego_code, nickname)
+	}
+	defer rows.Close()
+
+	rows, err = db.Query("select moego_code,nickname from user where id in (?,?)", 6836, 7430)
 	if err != nil {
 		log.Fatal(err)
 	}

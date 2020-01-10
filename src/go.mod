@@ -5,15 +5,12 @@ go 1.12
 require (
 	github.com/fsnotify/fsnotify v1.4.7 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
-	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.3.2
 	github.com/hpcloud/tail v1.0.0
 	golang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3 // indirect
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
-	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/text v0.3.2
 	golang.org/x/tools v0.0.0-20190524140312-2c0ae7006135 // indirect
-	google.golang.org/genproto v0.0.0-20200108215221-bd8f9a0ef82f
 	google.golang.org/grpc v1.26.0
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/olivere/elastic.v5 v5.0.84
