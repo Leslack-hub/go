@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	pb "grpc_demo/protoDemo"
+	pb "leslack/src/grpc_demo/protoDemo"
 )
 
 // server is used to implement helloworld.GreeterServer.

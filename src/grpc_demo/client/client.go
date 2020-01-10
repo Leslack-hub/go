@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"google.golang.org/grpc"
-	pb "grpc_demo/protoDemo"
+	pb "leslack/src/grpc_demo/protoDemo"
 	"log"
 	"os"
 	"time"
