@@ -1,13 +1,14 @@
 package main
 
 import (
+	"leslack/src/test/rpctest"
 	"log"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"rpctest"
 )
 
+// sendMessage: {"method": "DemoService.Div", "params":[{"A":3,"B":4}],"id":1}
 func main() {
 	rpc.Register(rpctest.DemoService{})
 	listen, err := net.Listen("tcp", ":20001")

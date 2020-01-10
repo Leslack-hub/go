@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"leslack/src/test/rpctest"
 	"net"
 	"net/rpc/jsonrpc"
-	"rpctest"
 )
 
 func main() {
