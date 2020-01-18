@@ -20,16 +20,19 @@ func reverseKGroup2(head *ListNode, k int) *ListNode {
 
 	res := &ListNode{}
 	first := head
-	lastLink := res
 	for i := 0; i < k; i++ {
-		lastLink.Next = first
+		temp := first
 		first = first.Next
-		lastLink.Next.Next = nil
-		lastLink = lastLink.Next
+		temp.Next = res.Next
+		res.Next = temp
 	}
-	res = reverseLink(res.Next)
-	lastLink.Next = reverseKGroup2(first, k)
-	return res
+	secondLink := res
+	for i:=0;i<k;i++ {
+		secondLink = secondLink.Next
+	}
+	secondLink.Next = reverseKGroup2(first, k)
+
+	return res.Next
 }
 func reverseKGroup(head *ListNode, k int) *ListNode {
 	if k == 1 {
