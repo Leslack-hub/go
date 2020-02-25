@@ -22,7 +22,6 @@ func solveSudoku(board [][]byte) {
 
 }
 func place_number(d, row, col int) {
-
 }
 func main() {
 	solveSudoku([][]byte{

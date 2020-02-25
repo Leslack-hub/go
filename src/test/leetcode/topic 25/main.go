@@ -27,7 +27,7 @@ func reverseKGroup2(head *ListNode, k int) *ListNode {
 		res.Next = temp
 	}
 	secondLink := res
-	for i:=0;i<k;i++ {
+	for i := 0; i < k; i++ {
 		secondLink = secondLink.Next
 	}
 	secondLink.Next = reverseKGroup2(first, k)
