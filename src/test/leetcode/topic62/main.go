@@ -21,6 +21,21 @@ func uniquePaths(m int, n int) int {
 	fmt.Println(path)
 	return path[m-1][n-1]
 }
+func uniquePaths2(m int, n int) int {
+	path := make([][]int, m)
+	for i := 0; i < m; i++ {
+		path[i] = make([]int, n)
+		for j := 0; j < n; j++ {
+			if i==0 || j == 0 {
+				path[i][j] =1
+				continue
+			}
+			path[i][j] = path[i-1][j] + path[i][j-1]
+		}
+	}
+	fmt.Println(path)
+	return path[m-1][n-1]
+}
 func fcc(n int) int {
 	list := make([]int, n)
 	list[0] = 1
@@ -57,7 +72,7 @@ func gold(pattern []int, num int) int {
 	return array[num]
 }
 func main() {
-	//fmt.Println(uniquePaths(1, 1))
+	fmt.Println(uniquePaths2(3, 3))
 	//fmt.Println(fcc2(5))
-	fmt.Println(gold([]int{2, 5, 7}, 27))
+	//fmt.Println(gold([]int{2, 5, 7}, 27))
 }
