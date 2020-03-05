@@ -96,5 +96,5 @@ func main() {
 	//	{".", ".", ".", "Q"},
 	//	{".", ".", ".", "."},
 	//}, 1, 1))
-	fmt.Println(len(solveNQueens(8)))
+	fmt.Println(solveNQueens(4))
 }
