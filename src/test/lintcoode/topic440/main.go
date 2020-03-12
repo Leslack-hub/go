@@ -26,6 +26,18 @@ func backpackIII(A []int, V []int, m int) int {
 			}
 		}
 	}
+	// 同理
+	for i := 1; i <= n; i++ {
+		for w := 1; w <= m; w++ {
+			f[i][w] = f[i-1][w]
+			k := 1
+			for w >= k*A[i-1] && f[i-1][w-k*A[i-1]] != -1 {
+				f[i][w] = helper.Max(f[i][w], f[i-1][w-k*A[i-1]]+k*V[i-1])
+				f[i-1][w] = f[i][w]
+				k++
+			}
+		}
+	}
 	fmt.Println(f)
 	var res int
 	for i := 0; i <= m; i++ {
