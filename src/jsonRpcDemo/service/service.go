@@ -1,7 +1,7 @@
 package main
 
 import (
-	"json_rpc"
+	"leslack/src/jsonRpcDemo"
 	"log"
 	"net"
 	"net/rpc"
@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	rpc.Register(json_rpc.DemoService{})
+	rpc.Register(jsonRpcDemo.DemoService{})
 	listen, err := net.Listen("tcp", ":20001")
 	if err != nil {
 		panic(listen)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"json_rpc"
+	"leslack/src/jsonRpcDemo"
 	"net"
 	"net/rpc/jsonrpc"
 )
@@ -23,9 +23,9 @@ func main() {
 		}
 	}
 
-	err = client.Call("DemoService.Div", json_rpc.Args{A: 10, B: 5}, &result)
+	err = client.Call("DemoService.Div", jsonRpcDemo.Args{A: 10, B: 5}, &result)
 	dealFunc(err)
 
-	err = client.Call("DemoService.Div", json_rpc.Args{10, 0}, &result)
+	err = client.Call("DemoService.Div", jsonRpcDemo.Args{10, 0}, &result)
 	dealFunc(err)
 }
