@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 /**
- * 两个字符相同最长长度
+ * 最长相同同子序列长度
  */
 func DistinctSubsequences(A string, B string) int {
 	m, n := len(A), len(B)
