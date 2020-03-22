@@ -1,16 +1,18 @@
 package main
 
-import "leslack/src/helper"
+import (
+	"fmt"
+	"leslack/src/helper"
+)
 
 func LongestPalindromicSubsequence(s string) int {
 	n := len(s)
-	if n <= 1 {
-		return 1
-	}
-
 	f := make([][]int, n)
 	for i := 0; i < n; i++ {
 		f[i] = make([]int, n)
+	}
+
+	for i := 0; i < n; i++ {
 		f[i][i] = 1
 	}
 
@@ -21,19 +23,19 @@ func LongestPalindromicSubsequence(s string) int {
 			f[i][i+1] = 1
 		}
 	}
-
-	for length := 3; length <= n; length++ {
-		for i := 0; i <= n-i; i++ {
-			j := i + length - 1
-			f[i][j] = helper.Max(f[i+1][j], f[i][j-1])
+	for len := 3; len <= n; len++ {
+		for i := 0; i <= n-len; i++ {
+			j := i + len - 1
+			f[i][j] = helper.Max(f[i][j-1], f[i+1][j])
 			if s[i] == s[j] {
 				f[i][j] = helper.Max(f[i][j], f[i+1][j-1]+2)
 			}
 		}
 	}
 
+	return f[0][n-1]
 }
 
 func main() {
-	LongestPalindromicSubsequence("bbbab")
+	fmt.Println(LongestPalindromicSubsequence("bbbab"))
 }
