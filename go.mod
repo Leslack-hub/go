@@ -8,6 +8,7 @@ require (
 	github.com/golang/protobuf v1.3.2
 	github.com/hpcloud/tail v1.0.0
 	github.com/klauspost/cpuid v1.2.2 // indirect
+	github.com/micro/go-micro v1.16.0
 	github.com/micro/protoc-gen-micro v1.0.0 // indirect
 	google.golang.org/grpc v1.26.0
 )
