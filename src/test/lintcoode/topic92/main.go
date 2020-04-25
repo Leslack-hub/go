@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"leslack/src/helper"
+)
 
 func backpack(A []int, m int) int {
 	n := len(A)
@@ -30,6 +33,20 @@ func backpack(A []int, m int) int {
 	return res
 }
 
+func test(A []int, m int) int {
+	n := len(A)
+	f := make([]int, m+1)
+	for i := 1; i <= m; i++ {
+		for j := 1; j <= n; j++ {
+			if i >= j {
+				f[i] = helper.Max(f[i-1], f[i-j] + A[j-1])
+			}
+		}
+	}
+	fmt.Println(f)
+	return 0
+}
+
 func main() {
-	fmt.Println(backpack([]int{2, 3, 5, 7}, 11))
+	fmt.Println(test([]int{2, 3, 5, 7}, 11))
 }
