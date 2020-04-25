@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 func generateParenthesis(n int) []string {
 	res := make([]string, 0, n*n)
 	bytes := make([]byte, n*2)
@@ -24,7 +22,4 @@ func dfs(left, right, idx int, bytes []byte, res *[]string) {
 		bytes[idx] = ')'
 		dfs(left, right-1, idx+1, bytes, res)
 	}
-}
-func main() {
-	fmt.Println(generateParenthesis(3))
 }

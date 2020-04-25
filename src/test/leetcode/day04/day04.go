@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println(findMedianSortedArrays([]int{4,2,3}, []int{2}))
+	fmt.Println(findMedianSortedArrays([]int{1,3,6, 9, 20, 25}, []int{2, 4, 7, 16, 17}))
 }
 
 func findMedianSortedArrays(nums1 []int, nums2 []int) float64 {
