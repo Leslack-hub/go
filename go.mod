@@ -11,5 +11,7 @@ require (
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/micro/go-micro v1.16.0
 	github.com/micro/protoc-gen-micro v1.0.0 // indirect
+	github.com/ramya-rao-a/go-outline v0.0.0-20200117021646-2a048b4510eb // indirect
+	golang.org/x/tools/gopls v0.4.1 // indirect
 	google.golang.org/grpc v1.26.0
 )
