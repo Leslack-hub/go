@@ -12,8 +12,7 @@ func solveSudoku(board [][]byte) {
 
 	for i := 0; i < 9; i++ {
 		for j := 0; j < 9; j++ {
-			d := board[i][j]
-
+			temp := board[i][j]
 		}
 	}
 	box_index := func(row int, col int) int {
