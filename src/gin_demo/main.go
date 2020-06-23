@@ -22,7 +22,9 @@ func main() {
 		name := ctx.PostForm("name")
 		phone := ctx.PostForm("phone")
 		password := ctx.PostForm("passward")
-		if !name || !phone || !password {
+		if len(name) == 0 ||
+			len(phone) == 0 ||
+			len(password) == 0 {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"code": 422, "msg": "参数错误"})
 		}
 
