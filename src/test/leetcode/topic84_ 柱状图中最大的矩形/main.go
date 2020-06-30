@@ -20,6 +20,7 @@ func largestRectangleArea(heights []int) int {
 			left[i] = monoStack[len(monoStack)-1]
 		}
 		monoStack = append(monoStack, i)
+		fmt.Println(monoStack)
 	}
 	ans := 0
 	for i := 0; i < n; i++ {
@@ -33,6 +34,25 @@ func max(x, y int) int {
 		return x
 	}
 	return y
+}
+
+/**
+ * 暴力解法
+ */
+func largestRectangleArea2(heights []int) int {
+	length := len(heights)
+	var maxVar int
+	for i := 0; i < length; i++ {
+		left, right := i-1, i+1
+		for right < length && heights[right] >= heights[i] {
+			right++
+		}
+		for left >= 0 && heights[left] >= heights[i] {
+			left--
+		}
+		maxVar = max(maxVar, heights[i]*(right-left-1))
+	}
+	return maxVar
 }
 
 func main() {
