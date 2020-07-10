@@ -20,7 +20,6 @@ func largestRectangleArea(heights []int) int {
 			left[i] = monoStack[len(monoStack)-1]
 		}
 		monoStack = append(monoStack, i)
-		fmt.Println(monoStack)
 	}
 	ans := 0
 	for i := 0; i < n; i++ {
