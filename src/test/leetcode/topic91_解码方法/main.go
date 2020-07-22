@@ -25,5 +25,5 @@ func numDecodings(s string) int {
 }
 
 func main() {
-	fmt.Println(numDecodings("2260"))
+	fmt.Println(numDecodings("226"))
 }
