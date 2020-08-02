@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ListNode struct {
 	Val  int
@@ -39,5 +41,13 @@ func main() {
 	for result != nil {
 		fmt.Println(result)
 		result = result.Next
+	}
+}
+
+func printListNode(node *ListNode) {
+	result := node
+	for result != nil {
+		fmt.Println(result)
+		result= result.Next
 	}
 }
