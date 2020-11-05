@@ -10,6 +10,7 @@ func removeElement(nums []int, val int) int {
 			p++
 		}
 	}
+	fmt.Println(nums)
 
 	return p
 }

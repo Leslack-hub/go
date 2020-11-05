@@ -11,9 +11,13 @@ func reverseLinkList(head *ListNode) *ListNode {
 	res := &ListNode{}
 	temp := head
 	for temp != nil {
+		// 当前值
 		i := temp
+		// 移动指针
 		temp = temp.Next
+		// 下一个指针指向结果
 		i.Next = res
+		// 结果就是当前i
 		res = i
 	}
 

@@ -3,6 +3,7 @@ module leslack
 go 1.13
 
 require (
+	github.com/Andrew-M-C/go.jsonvalue v1.0.2
 	github.com/Shopify/sarama v1.24.1
 	github.com/atotto/clipboard v0.1.2
 	github.com/fecshopsoft/golang-db v0.0.0-20180107045852-cbc8b8c43afe
@@ -11,7 +12,7 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/protobuf v1.4.2
 	github.com/hpcloud/tail v1.0.0
-	github.com/jinzhu/gorm v1.9.14 // indirect
+	github.com/jinzhu/gorm v1.9.14
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/micro/go-micro v1.16.0
@@ -25,5 +26,5 @@ require (
 	google.golang.org/protobuf v1.24.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/olivere/elastic.v5 v5.0.85
-	gopkg.in/yaml.v2 v2.3.0 // indirect
+	gopkg.in/yaml.v2 v2.3.0
 )
