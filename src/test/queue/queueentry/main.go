@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"imooc.com/ccmouse/learngo/queue"
+	"leslack/src/test/queue"
 )
 
 func main() {

@@ -5,8 +5,8 @@ import (
 
 	"time"
 
-	"imooc.com/ccmouse/learngo/retriever/mock"
-	"imooc.com/ccmouse/learngo/retriever/real"
+	"leslack/src/test/retriever/mock"
+	"leslack/src/test/retriever/real"
 )
 
 type Retriever interface {

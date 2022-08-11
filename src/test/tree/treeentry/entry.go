@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"imooc.com/ccmouse/learngo/tree"
+	"leslack/src/test/tree"
 )
 
 type myTreeNode struct {
