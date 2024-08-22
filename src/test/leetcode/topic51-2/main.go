@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/duke-git/lancet/v2/mathutil"
+)
 
 const limit = 6
 
@@ -17,21 +20,14 @@ func queen(ret [limit]int, level int) {
 		result = append(result, ret)
 		return
 	}
-	// 第几排 开始尝试数字
+	// 第几排 开始尝试第几个位置
 	for number := 0; number < len(ret); number++ {
 		ret[level] = number
 		flag := true
 		// 判断第一排的位置 到 现在的位置 是否冲突
 		for i := 0; i < level; i++ {
-			tmp := number - ret[i]
-			var differ int
-			if tmp > 0 {
-				differ = tmp
-			} else {
-				differ = -tmp
-			}
-			// 如果前面已经出现了 number 直接跳过， differ == level-i 表示在同一个对角线了
-			if ret[i] == number || differ == level-i {
+			// 如果前面已经出现了 number 直接跳过， 是否在同一对角线了 number-ret[i] 与第i排的位置距离
+			if ret[i] == number || mathutil.Abs(number-ret[i]) == level-i {
 				flag = false
 				break
 			}
