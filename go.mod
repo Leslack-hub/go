@@ -1,6 +1,6 @@
 module leslack
 
-go 1.13
+go 1.23
 
 require (
 	github.com/Andrew-M-C/go.jsonvalue v1.0.2
