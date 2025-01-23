@@ -136,6 +136,7 @@ ident		{idchar0}{idchars}*
 "&^"			return ANDNOT
 "<<"			return LSH
 ">>"			return RSH
+"&&"            return AND
 
 false			lval.item = false
 			return BOOLEAN

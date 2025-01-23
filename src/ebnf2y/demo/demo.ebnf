@@ -12,6 +12,7 @@ boolean		= "true" | "false" .
 andnot 	= "&^" .
 lsh 	= "<<" .
 rsh 	= ">>" .
+and     = "&&" .
 
 Expression = Term  { ( "^" | "|" | "-" | "+" ) Term } .
 ExpressionList = Expression { "," Expression } .
@@ -22,7 +23,7 @@ Literal = boolean
 	| imaginary
 	| integer
 	| str .
-Term = Factor { ( andnot | "&" | lsh  | rsh | "%" | "/" | "*" ) Factor } .
+Term = Factor { ( andnot | "&" | lsh  | rsh | "%" | "/" | "*" | and ) Factor } .
 Operand = Literal
         | QualifiedIdent "(" [ ExpressionList ] ")"
         | "(" Expression ")" .
