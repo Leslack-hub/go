@@ -1,0 +1,992 @@
+{
+  "listingPrice": "50",
+  "wechatNotifyShowTag": "",
+  "serviceBookingNotify": "",
+  "serviceBookingManual": "<p>订场须知：1、篮球场订场为半场开放，需订全场的客户请选择A、B两个半场；2、所有场地均可提前一天订场，如需退场，请于开场前1个小时前取消订单，不收取违约金，开场前的1小时内退场，收取订单金额的一半违约金，开场后退场，收取订单金额的全额违约金；3、所有场地均按线上预定用途对外开放，未经场馆方许可，不可擅自举办培训或者其他类型的活动；4、严禁场地转卖。</p>",
+  "error": 0,
+  "message": "ok",
+  "wechatMsgShowTag": "1",
+  "refundTag": true,
+  "sysdate": "2025-08-29 09:09:15",
+  "currentFullTag": "0",
+  "segmentFieldList": [
+    {
+      "segment": 24,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 26,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 28,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 30,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 32,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 34,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 36,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 38,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 40,
+      "step": 2,
+      "freeFieldNum": 10
+    },
+    {
+      "segment": 42,
+      "step": 2,
+      "freeFieldNum": 10
+    }
+  ],
+  "discountInfo": {
+    "discountTag": "0"
+  },
+  "channelTimeConfig": "[{\"startSegment\":24,\"packageBook\":\"0\",\"endSegment\":44}]",
+  "bookHour": 1,
+  "fieldType": 1841,
+  "fieldList": [
+    {
+      "fieldNo": 1,
+      "centerId": 50030001,
+      "fieldName": "1号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007619,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f5836b4886810611f9a9ed64a5e6afd1"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "3ebebb22fe1fd25cb0d53f961446d6f3"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c057e4228605cb76531d760b93c9ada3"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f3a74ed8bf6efbe143e33c0ba1cf9e26"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "fade00ab4725896da1840e9c0125dc0f"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "62717aa8ee97054b1a647c1d2a36679c"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "415d2765b16151bea92d4e43633c8884"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f09ada132fe40c5b737297d658b7a035"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "0f81564b25dc4972b2892de343d0383c"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f2bcbb1ae4afc807cae8cfd14eef440f"
+        }
+      ]
+    },
+    {
+      "fieldNo": 2,
+      "centerId": 50030001,
+      "fieldName": "2号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007620,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "80d849293b668d0292c40a8f85c6b274"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "58272f32b4819f450095ecc525774316"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "6d02a10c0fcb443141bcccc3a99ae9d3"
+        },
+        {
+          "price": 0,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "8c19ad781051f7a87b186fa51e36f287"
+        },
+        {
+          "price": 0,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "a4a09be9ae157dd17d913f040d8c47eb"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "e2c1fec03281bfbaec59c6a2de2dbdaf"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "b9258766e566920fcb32dda31636eef9"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "193f0c3980b4e2e5bdbbdbe61a35823b"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "675b82669466607ced17b1a4f38b2588"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "fc6af48442f2a2dc4ee4ade63b18a14e"
+        }
+      ]
+    },
+    {
+      "fieldNo": 3,
+      "centerId": 50030001,
+      "fieldName": "3号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007621,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "5eb9d2b497fc5c300fe6af28da06e744"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "2355bae473a4578e91723baac6fdb72d"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "5b6b4650bd2257a8345622e596f76a68"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "0a67365ea47fc31ce4240d02b8e6bca9"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "7e0d1481b54ccbbf72d2a187ec33a542"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "463d07866d425f1cfc9aa426b8d5498d"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c6ca8d2c3ea86235d3cb0ae879f5fc4c"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "a612822f542be99745813434d5b88cb5"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "569fb1547cace4ff8db916da8a2787a4"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "b66c53375c2fd6aac12c74d45fe22716"
+        }
+      ]
+    },
+    {
+      "fieldNo": 4,
+      "centerId": 50030001,
+      "fieldName": "4号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007622,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "757362da21ed677ea6da0b2823a511df"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "045739a3f85417c151b0a7a0181e3b1a"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "624460c7f2049af27eec9625ea7643ab"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "b2ea88440e0165830139c873a54ce2e3"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "91e3ed3417462607bc2ce2487b7ea4aa"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "aa6c95a27061bbcac98305701da9d2cf"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "910c8d5c49c5cdbbfc6d390b95c000b5"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "74ed086b229668acd7b7c845abd874ad"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "dd94ba3bd689d6b934758e6730eedaa2"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "3c91597ea91e74b20e7faa5bbdc5986b"
+        }
+      ]
+    },
+    {
+      "fieldNo": 5,
+      "centerId": 50030001,
+      "fieldName": "5号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007623,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "e963888b69f26ed1d7581d977bb2c663"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "d1ecda076a8c319f98bb86caccc1b7f1"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "1f9bff936c4d87d74b720a6756f3754c"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "74d1be0967447bf5c4a498a32d4203b6"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "69dfcd77ec64a7e472d58c689b2c6c0f"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "90bbaaf82b1c518c627d1c3fea95d8a7"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "82412c6a77c4d89ecf18ec7e33affa4b"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c420ed1dbdbd6f1f1012dddd104b43af"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "393ad1243f0ac531b2f4f83f0afb34c0"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "30435435bf970c56be0ddbb13e99fff3"
+        }
+      ]
+    },
+    {
+      "fieldNo": 6,
+      "centerId": 50030001,
+      "fieldName": "6号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007624,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "2e003e77073925e1a6264a63a994b2be"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "cd1d48728d683b11049c14e9f1ce2230"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "2031c3fbdcd595c9356319ec5e6b6d57"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "3b0d8bbc6ccfbf3b2673e612e6aef47e"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "bd5dae3b80802033647472edebddbaeb"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "888b5939d7323a5a8c8c834bed374e61"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "6c016f456696003f3f44474858513ee7"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "1e6658426512a3d26f5f62ecf4073265"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "928e50d3f01d1cfb6a833f382f232a50"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "620db75132317cae37cc6f39aa968a78"
+        }
+      ]
+    },
+    {
+      "fieldNo": 7,
+      "centerId": 50030001,
+      "fieldName": "7号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007625,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "ea575b512e39b05deb4ebe84859a3c89"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "6c62eb53b34865f3f423eaea520fc2be"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "28e109c4f5e6d81d4bb0d14c351359c9"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f4b666e56a82d0f28e68a6e9734b968b"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c85f30dd4a6cf8e472fbc4377003ce95"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "96a501f8b3e9bee6811370080a807a81"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "9fc7bf3a07fe9698133fd38028b5042b"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c0b3ef2121158af91a5f1b2a76577426"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f99de2c3bb0deb8534fba7f3af101f6e"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "345fb5aa95736bc218752a73c90b2bb1"
+        }
+      ]
+    },
+    {
+      "fieldNo": 8,
+      "centerId": 50030001,
+      "fieldName": "8号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007626,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "61244af66505c19dbee3c9a0b51497dc"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "fafd2fa480587ed374e9bd50a9b7de82"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "ae074f92a83e18117773017c89ef62a3"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "274ef637509e46fc3a299866b7655a02"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "0951737d5162d9c277e270bacf110cd6"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "bd7ee212ae251826877ce64d8945b66e"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "b40ee04bd9f5a7253e156d2f824ab129"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "7610db634dc9cb6024a778d3764409d0"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "775b2c0d94125634622942e7e94c5f69"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "72de88458e8349792ce39132edf13fef"
+        }
+      ]
+    },
+    {
+      "fieldNo": 9,
+      "centerId": 50030001,
+      "fieldName": "9号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007627,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c9f26d8ffe75e6126eb64257a2f6a43e"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "62d910655cb6cfdba5a47484af2684bf"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "9a2b15ae73ae3b3dac99bc6dff4f2f2d"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "047ce6e9b9d3458f6ef0b67cae0d9697"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "8c95d86b75317ac6fa41a3ddaa7c2268"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "8fa46dc514bbb75673ac3803eef93c19"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "7f8f2483973bb1da02c51d412f9bab91"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "f1ca7e85e1090daa4bb9c569e1b27bb5"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "df1e23019a9fa5a091baee33e4028dc0"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "56f0209255972e30ff3853911d4511c4"
+        }
+      ]
+    },
+    {
+      "fieldNo": 10,
+      "centerId": 50030001,
+      "fieldName": "10号场",
+      "venueId": 5003000101,
+      "bookHour": 1,
+      "serviceId": 1002,
+      "fieldType": 1841,
+      "fieldId": 20007628,
+      "fieldSgementList": [
+        {
+          "price": 5000,
+          "segment": 24,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "c29c856cb18c3ab061ffaca42eb2ea48"
+        },
+        {
+          "price": 5000,
+          "segment": 26,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "3d393d5ce15b0e37adb086b593bf1329"
+        },
+        {
+          "price": 5000,
+          "segment": 28,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "21c12e1871e741c383b19c97871bb901"
+        },
+        {
+          "price": 5000,
+          "segment": 30,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "f095634184670acab1954d392a7219c2"
+        },
+        {
+          "price": 5000,
+          "segment": 32,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "95d8a147c72f8ecb729f70c5f22b1493"
+        },
+        {
+          "price": 5000,
+          "segment": 34,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "88a7c407ae43b053bff211c496711e14"
+        },
+        {
+          "price": 5000,
+          "segment": 36,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "973a8ee49a017d2f14bedfa516cd9924"
+        },
+        {
+          "price": 5000,
+          "segment": 38,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "57cb551e31c633b70b4c1718c8e01d63"
+        },
+        {
+          "price": 5000,
+          "segment": 40,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "2",
+          "fieldSegmentId": "b58464d468071fc263f29554ba8fed9c"
+        },
+        {
+          "price": 5000,
+          "segment": 42,
+          "bookingStatus": "0",
+          "step": 2,
+          "state": "0",
+          "fieldSegmentId": "d928f0f77a1d1f988bd14da435d3d1ef"
+        }
+      ]
+    }
+  ]
+}
