@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -20,7 +21,6 @@ import (
 const (
 	TestJSONFile = "test.json"
 	RetryDelay   = 1 * time.Second
-	OrderDay     = "20250901"
 )
 
 type FieldSegment struct {
@@ -48,15 +48,25 @@ var (
 	workerChanWg *sync.WaitGroup
 	gCtx         context.Context
 	gCancel      context.CancelFunc
+	execDay      string
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	var (
+		times   string
+		startAt string
+	)
+	flag.StringVar(&execDay, "day", "", "天数格式： 20250901")
+	flag.StringVar(&times, "times", "5", "执行次数")
+	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
+	flag.Parse()
+
+	if execDay == "" {
 		showUsage()
 		os.Exit(1)
 	}
 
-	maxAttempts, err := strconv.Atoi(os.Args[1])
+	maxAttempts, err := strconv.Atoi(times)
 	if err != nil || maxAttempts <= 0 {
 		log.Println("错误: 最大执行次数必须是正整数")
 		os.Exit(1)
@@ -67,7 +77,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	shanghaiLoc, err := time.LoadLocation("Asia/Shanghai")
+	var shanghaiLoc *time.Location
+	shanghaiLoc, err = time.LoadLocation("Asia/Shanghai")
 	if err == nil {
 		time.Local = shanghaiLoc
 	}
@@ -96,9 +107,9 @@ func main() {
 		log.Println("注意: 使用实际HTTP请求模式")
 	}
 
-	if len(os.Args) == 3 {
+	if startAt != "" {
 		var start time.Time
-		start, err = time.ParseInLocation(time.DateTime, os.Args[2], shanghaiLoc)
+		start, err = time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
 		if err != nil {
 			log.Println("时间格式错误")
 			return
@@ -183,10 +194,7 @@ func main() {
 }
 
 func showUsage() {
-	log.Printf("例如: %s 10        # 使用实际HTTP请求\n", os.Args[0])
-	log.Println("")
-	log.Println("说明: 该脚本会尝试获取场地列表并生成预订命令")
-	log.Println("选项:")
+	flag.Usage()
 }
 
 func checkDependencies() error {
@@ -238,7 +246,7 @@ func processFieldList(response *APIResponse) error {
 				//	}()
 				//} else {
 				workerChanWg.Add(1)
-				workerChan <- fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?$(node signature_generator.js -m newOrder --day=%s --fieldInfo=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, OrderDay, fieldSegmentIDs)
+				workerChan <- fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?$(node signature_generator.js -m newOrder --day=%s --fieldInfo=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, execDay, fieldSegmentIDs)
 				//}
 			} else {
 				log.Println("  未找到有效的场地时段ID")
@@ -250,7 +258,7 @@ func processFieldList(response *APIResponse) error {
 }
 
 func fetchFieldListWithCurl() ([]byte, error) {
-	curlCmd := exec.Command("sh", "-c", fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?$(node signature_generator.js -m fieldList --day=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, OrderDay))
+	curlCmd := exec.Command("sh", "-c", fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?$(node signature_generator.js -m fieldList --day=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, execDay))
 
 	output, err := curlCmd.Output()
 	if err != nil {
