@@ -49,6 +49,7 @@ var (
 	gCtx         context.Context
 	gCancel      context.CancelFunc
 	execDay      string
+	location     string
 )
 
 func main() {
@@ -59,6 +60,7 @@ func main() {
 	flag.StringVar(&execDay, "day", "", "天数格式： 20250901")
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
+	flag.StringVar(&location, "location", "4,5", "位置（1-10）")
 	flag.Parse()
 
 	if execDay == "" {
@@ -215,13 +217,27 @@ func checkDependencies() error {
 
 func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 	var fieldSegmentIDs []string
-
-	if len(segmentList) > 3 && segmentList[3].State == "0" && segmentList[3].Price == 0 && segmentList[3].FieldSegmentID != "" {
-		fieldSegmentIDs = append(fieldSegmentIDs, segmentList[3].FieldSegmentID)
+	locations := strings.Split(location, ",")
+	if len(locations) == 0 {
+		return ""
+	}
+	l1, err := strconv.Atoi(locations[0])
+	if err == nil && l1 >= 1 && l1 <= 10 {
+		l1 = l1 - 1
+		if len(segmentList) > l1 && segmentList[l1].State == "0" && segmentList[l1].Price == 0 && segmentList[l1].FieldSegmentID != "" {
+			fieldSegmentIDs = append(fieldSegmentIDs, segmentList[3].FieldSegmentID)
+		}
 	}
 
-	if len(segmentList) > 4 && segmentList[4].State == "0" && segmentList[4].Price == 0 && segmentList[4].FieldSegmentID != "" {
-		fieldSegmentIDs = append(fieldSegmentIDs, segmentList[4].FieldSegmentID)
+	if len(locations) >= 2 {
+		var l2 int
+		l2, err = strconv.Atoi(locations[1])
+		if err == nil && l2 >= 1 && l2 <= 10 {
+			l2 = l2 - 1
+			if len(segmentList) > l2 && segmentList[l2].State == "0" && segmentList[l2].Price == 0 && segmentList[l2].FieldSegmentID != "" {
+				fieldSegmentIDs = append(fieldSegmentIDs, segmentList[4].FieldSegmentID)
+			}
+		}
 	}
 
 	return strings.Join(fieldSegmentIDs, ",")
@@ -316,7 +332,6 @@ func (w *Worker) executeCommand(workerID int) error {
 		if err != nil {
 			log.Printf("Worker %d execution %d error: %v", workerID, current, err)
 		} else {
-			log.Printf("Worker %d execution %d: %s", workerID, current, string(output))
 			go w.checkJSONResponse(output)
 		}
 
