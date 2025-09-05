@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -204,14 +208,6 @@ func checkDependencies() error {
 		return fmt.Errorf("需要安装 curl 命令")
 	}
 
-	if _, err := exec.LookPath("node"); err != nil {
-		return fmt.Errorf("需要安装 Node.js")
-	}
-
-	if _, err := os.Stat("signature_generator.js"); os.IsNotExist(err) {
-		return fmt.Errorf("找不到 signature_generator.js 文件")
-	}
-
 	return nil
 }
 
@@ -261,8 +257,14 @@ func processFieldList(response *APIResponse) error {
 				//		workerChan <- "echo '{\"message\":\"ok\"}'"
 				//	}()
 				//} else {
+				// 使用Go实现的签名生成器
+				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, "2025082802482655", "1002", "5003000101")
+				if err != nil {
+					log.Printf("生成newOrder签名失败: %v", err)
+					return
+				}
 				workerChanWg.Add(1)
-				workerChan <- fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?$(node signature_generator.js -m newOrder --day=%s --fieldInfo=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, execDay, fieldSegmentIDs)
+				workerChan <- fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?%s" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, signatureParams)
 				//}
 			} else {
 				log.Println("  未找到有效的场地时段ID")
@@ -274,9 +276,15 @@ func processFieldList(response *APIResponse) error {
 }
 
 func fetchFieldListWithCurl() ([]byte, error) {
-	curlCmd := exec.Command("sh", "-c", fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?$(node signature_generator.js -m fieldList --day=%s)" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, execDay))
+	signatureParams, err := GenerateFieldListSignature(execDay, "2025082802482655", "5003000101", "1002")
+	if err != nil {
+		return nil, fmt.Errorf("生成签名失败: %v", err)
+	}
 
-	output, err := curlCmd.Output()
+	curlCmd := exec.Command("sh", "-c", fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, signatureParams))
+
+	var output []byte
+	output, err = curlCmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("curl命令执行失败: %v", err)
 	}
@@ -303,7 +311,7 @@ func (w *Worker) checkJSONResponse(output []byte) {
 		return
 	}
 
-	if result.Message == "ok" {
+	if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
 		log.Println("Success detected in JSON output, exiting program...")
 		w.cancelOnce.Do(func() {
 			w.cancel()
@@ -376,4 +384,322 @@ func Run(command string, maxExec int64, numWorkers int) {
 
 	wg.Wait()
 	log.Println("All workers finished")
+}
+
+// 配置常量
+const (
+	APIKey    = "e98ce2565b09ecc0"
+	APISecret = "b28efc98ae90a878"
+	CenterID  = "50030001"
+	TenantID  = "82"
+	ChannelID = "11"
+)
+
+// KeyValue 键值对结构
+type KeyValue struct {
+	Key   string
+	Value string
+}
+
+// SignatureOptions 签名选项
+type SignatureOptions struct {
+	Prefix     string
+	NoCenterID bool
+}
+
+// SignatureResult 签名结果
+type SignatureResult struct {
+	APIKey    string `json:"apiKey"`
+	Timestamp int64  `json:"timestamp"`
+	ChannelID string `json:"channelId"`
+	CenterID  string `json:"centerId,omitempty"`
+	TenantID  string `json:"tenantId,omitempty"`
+	Sign      string `json:"sign"`
+	// 动态参数
+	Params map[string]interface{} `json:"-"`
+}
+
+// md5Hash MD5加密函数
+func md5Hash(str string) string {
+	h := md5.New()
+	h.Write([]byte(str))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// generateSignature 根据原始JavaScript代码逆向的签名生成函数
+func generateSignature(apiPath string, params map[string]interface{}, options *SignatureOptions) (*SignatureResult, error) {
+	return generateSignatureWithTimestamp(apiPath, params, options, 0)
+}
+
+// generateSignatureWithTimestamp 生成签名，支持自定义时间戳（用于测试）
+func generateSignatureWithTimestamp(apiPath string, params map[string]interface{}, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
+	if options == nil {
+		options = &SignatureOptions{}
+	}
+
+	// 获取API密钥和密钥
+	apiKey := APIKey
+	apiSecret := APISecret
+	if options.Prefix != "" {
+		// 这里可以根据prefix获取不同的key，当前使用默认值
+	}
+
+	// 获取时间戳（如果提供了自定义时间戳则使用，否则使用当前时间）
+	var timestamp int64
+	if customTimestamp > 0 {
+		timestamp = customTimestamp
+	} else {
+		timestamp = time.Now().UnixMilli()
+	}
+
+	// 构建基础参数对象
+	result := &SignatureResult{
+		APIKey:    apiKey,
+		Timestamp: timestamp,
+		ChannelID: ChannelID,
+		Params:    make(map[string]interface{}),
+	}
+
+	// 添加传入的参数
+	for k, v := range params {
+		result.Params[k] = v
+	}
+
+	// 添加centerId（对应原代码逻辑）
+	if !options.NoCenterID {
+		if _, exists := result.Params["centerId"]; !exists {
+			result.CenterID = CenterID
+		}
+	}
+
+	// 添加tenantId
+	result.TenantID = TenantID
+
+	// 构建用于签名的参数映射
+	signParams := make(map[string]interface{})
+	signParams["apiKey"] = result.APIKey
+	signParams["timestamp"] = result.Timestamp
+	signParams["channelId"] = result.ChannelID
+
+	if result.CenterID != "" {
+		signParams["centerId"] = result.CenterID
+	}
+	if result.TenantID != "" {
+		signParams["tenantId"] = result.TenantID
+	}
+
+	// 添加业务参数
+	for k, v := range result.Params {
+		signParams[k] = v
+	}
+
+	// 转换为键值对数组
+	var keyValues []KeyValue
+	for k, v := range signParams {
+		keyValues = append(keyValues, KeyValue{
+			Key:   k,
+			Value: fmt.Sprintf("%v", v),
+		})
+	}
+
+	// 按key排序
+	sort.Slice(keyValues, func(i, j int) bool {
+		return keyValues[i].Key < keyValues[j].Key
+	})
+
+	// 拼接参数字符串
+	var paramStr strings.Builder
+	for _, kv := range keyValues {
+		paramStr.WriteString(kv.Key)
+		paramStr.WriteString("=")
+		paramStr.WriteString(kv.Value)
+	}
+
+	// 生成待签名字符串并编码
+	signString := apiPath + paramStr.String() + apiSecret
+	encodedString := url.QueryEscape(signString)
+
+	// 替换特殊字符（严格按照原代码逻辑）
+	if strings.Contains(encodedString, "(") {
+		encodedString = strings.ReplaceAll(encodedString, "(", "%28")
+	}
+	if strings.Contains(encodedString, ")") {
+		encodedString = strings.ReplaceAll(encodedString, ")", "%29")
+	}
+	if strings.Contains(encodedString, "'") {
+		encodedString = strings.ReplaceAll(encodedString, "'", "%27")
+	}
+	if strings.Contains(encodedString, "!") {
+		encodedString = strings.ReplaceAll(encodedString, "!", "%21")
+	}
+	if strings.Contains(encodedString, "~") {
+		encodedString = strings.ReplaceAll(encodedString, "~", "%7E")
+	}
+
+	// MD5加密
+	result.Sign = md5Hash(encodedString)
+
+	return result, nil
+}
+
+// toURLParams 将签名结果转换为URL参数字符串
+func toURLParams(result *SignatureResult) string {
+	// 按照JavaScript版本的确切顺序构建参数
+	// JavaScript输出顺序：apiKey, timestamp, channelId, [业务参数], centerId, tenantId, sign
+	var params []string
+
+	// 基础参数（固定顺序）
+	params = append(params, fmt.Sprintf("apiKey=%s", url.QueryEscape(result.APIKey)))
+	params = append(params, fmt.Sprintf("timestamp=%s", url.QueryEscape(strconv.FormatInt(result.Timestamp, 10))))
+	params = append(params, fmt.Sprintf("channelId=%s", url.QueryEscape(result.ChannelID)))
+
+	// 业务参数（按照JavaScript中的顺序）
+	// fieldList方法顺序：netUserId, venueId, serviceId, day, selectByfullTag, fieldType
+	// newOrder方法顺序：serviceId, day, fieldType, fieldInfo, ticket, randStr, venueId, netUserId
+
+	// 检查是否为newOrder方法（包含fieldInfo参数）
+	if _, hasFieldInfo := result.Params["fieldInfo"]; hasFieldInfo {
+		// newOrder方法的参数顺序
+		if serviceId, ok := result.Params["serviceId"]; ok {
+			params = append(params, fmt.Sprintf("serviceId=%s", url.QueryEscape(fmt.Sprintf("%v", serviceId))))
+		}
+		if day, ok := result.Params["day"]; ok {
+			params = append(params, fmt.Sprintf("day=%s", url.QueryEscape(fmt.Sprintf("%v", day))))
+		}
+		if fieldType, ok := result.Params["fieldType"]; ok {
+			params = append(params, fmt.Sprintf("fieldType=%s", url.QueryEscape(fmt.Sprintf("%v", fieldType))))
+		}
+		if fieldInfo, ok := result.Params["fieldInfo"]; ok {
+			params = append(params, fmt.Sprintf("fieldInfo=%s", url.QueryEscape(fmt.Sprintf("%v", fieldInfo))))
+		}
+		if ticket, ok := result.Params["ticket"]; ok {
+			params = append(params, fmt.Sprintf("ticket=%s", url.QueryEscape(fmt.Sprintf("%v", ticket))))
+		}
+		if randStr, ok := result.Params["randStr"]; ok {
+			params = append(params, fmt.Sprintf("randStr=%s", url.QueryEscape(fmt.Sprintf("%v", randStr))))
+		}
+		if venueId, ok := result.Params["venueId"]; ok {
+			params = append(params, fmt.Sprintf("venueId=%s", url.QueryEscape(fmt.Sprintf("%v", venueId))))
+		}
+		if netUserId, ok := result.Params["netUserId"]; ok {
+			params = append(params, fmt.Sprintf("netUserId=%s", url.QueryEscape(fmt.Sprintf("%v", netUserId))))
+		}
+	} else {
+		// fieldList方法的参数顺序
+		if netUserId, ok := result.Params["netUserId"]; ok {
+			params = append(params, fmt.Sprintf("netUserId=%s", url.QueryEscape(fmt.Sprintf("%v", netUserId))))
+		}
+		if venueId, ok := result.Params["venueId"]; ok {
+			params = append(params, fmt.Sprintf("venueId=%s", url.QueryEscape(fmt.Sprintf("%v", venueId))))
+		}
+		if serviceId, ok := result.Params["serviceId"]; ok {
+			params = append(params, fmt.Sprintf("serviceId=%s", url.QueryEscape(fmt.Sprintf("%v", serviceId))))
+		}
+		if day, ok := result.Params["day"]; ok {
+			params = append(params, fmt.Sprintf("day=%s", url.QueryEscape(fmt.Sprintf("%v", day))))
+		}
+		if selectByfullTag, ok := result.Params["selectByfullTag"]; ok {
+			params = append(params, fmt.Sprintf("selectByfullTag=%s", url.QueryEscape(fmt.Sprintf("%v", selectByfullTag))))
+		}
+		if fieldType, ok := result.Params["fieldType"]; ok {
+			params = append(params, fmt.Sprintf("fieldType=%s", url.QueryEscape(fmt.Sprintf("%v", fieldType))))
+		}
+	}
+
+	// 添加centerId和tenantId
+	if result.CenterID != "" {
+		params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
+	}
+	if result.TenantID != "" {
+		params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
+	}
+
+	// 最后添加签名
+	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
+
+	return strings.Join(params, "&")
+}
+
+// GenerateFieldListSignature 生成fieldList签名
+func GenerateFieldListSignature(day, netUserID, venueID, serviceID string) (string, error) {
+	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
+	params := map[string]any{
+		"netUserId":       netUserID,
+		"venueId":         venueID,
+		"serviceId":       serviceID,
+		"day":             day,
+		"selectByfullTag": "0",
+		"fieldType":       "1841",
+	}
+
+	result, err := generateSignature(apiPath, params, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return toURLParams(result), nil
+}
+
+// GenerateNewOrderSignature 生成newOrder签名
+func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID string) (string, error) {
+	apiPath := "/aisports-api/wechatAPI/order/newOrder"
+	params := map[string]any{
+		"serviceId": serviceID,
+		"day":       day,
+		"fieldType": "1841",
+		"fieldInfo": fieldInfo,
+		"ticket":    "",
+		"randStr":   "",
+		"venueId":   venueID,
+		"netUserId": netUserID,
+	}
+
+	result, err := generateSignature(apiPath, params, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return toURLParams(result), nil
+}
+
+// GenerateFieldListSignatureWithTimestamp 生成fieldList签名（测试用，支持固定时间戳）
+func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID string, timestamp int64) (string, error) {
+	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
+	params := map[string]any{
+		"netUserId":       netUserID,
+		"venueId":         venueID,
+		"serviceId":       serviceID,
+		"day":             day,
+		"selectByfullTag": "0",
+		"fieldType":       "1841",
+	}
+
+	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
+	if err != nil {
+		return "", err
+	}
+
+	return toURLParams(result), nil
+}
+
+// GenerateNewOrderSignatureWithTimestamp 生成newOrder签名（测试用，支持固定时间戳）
+func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID, venueID string, timestamp int64) (string, error) {
+	apiPath := "/aisports-api/wechatAPI/order/newOrder"
+	params := map[string]any{
+		"serviceId": serviceID,
+		"day":       day,
+		"fieldType": "1841",
+		"fieldInfo": fieldInfo,
+		"ticket":    "",
+		"randStr":   "",
+		"venueId":   venueID,
+		"netUserId": netUserID,
+	}
+
+	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
+	if err != nil {
+		return "", err
+	}
+
+	return toURLParams(result), nil
 }
