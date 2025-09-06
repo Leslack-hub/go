@@ -195,7 +195,7 @@
           "fieldSegmentId": "6d02a10c0fcb443141bcccc3a99ae9d3"
         },
         {
-          "price": 0,
+          "price": 5000,
           "segment": 30,
           "bookingStatus": "0",
           "step": 2,
@@ -203,7 +203,7 @@
           "fieldSegmentId": "8c19ad781051f7a87b186fa51e36f287"
         },
         {
-          "price": 0,
+          "price": 5000,
           "segment": 32,
           "bookingStatus": "0",
           "step": 2,
