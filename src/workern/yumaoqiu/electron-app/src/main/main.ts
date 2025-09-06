@@ -116,6 +116,9 @@ ipcMain.handle('start-go-program', async (event, params) => {
     if (params.location) {
       args.push('-location', params.location)
     }
+    if (params.netUserId) {
+      args.push('-net_user_id', params.netUserId)
+    }
 
     // 判断是运行exe还是go文件
     let command: string
