@@ -297,8 +297,6 @@ func fetchFieldListWithCurl() ([]byte, error) {
 
 	var output []byte
 	output, err = curlCmd.Output()
-	fmt.Println(string(output))
-	os.Exit(1)
 	if err != nil {
 		return nil, fmt.Errorf("curl命令执行失败: %v", err)
 	}

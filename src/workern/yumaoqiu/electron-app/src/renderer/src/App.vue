@@ -202,7 +202,7 @@ const selectedTimeSegments = ref<number[]>([])
 const logContainer = ref<HTMLElement>()
 
 // Debug模式控制 - 默认关闭，可通过快捷键切换
-const isDebugMode = ref(true)
+const isDebugMode = ref(false)
 
 // 时间段配置
 const timeSlots = [
