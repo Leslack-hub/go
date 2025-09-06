@@ -47,13 +47,14 @@ type APIResponse struct {
 }
 
 var (
-	useTestData  = true
+	useTestData  = false
 	workerChan   chan string
 	workerChanWg *sync.WaitGroup
 	gCtx         context.Context
 	gCancel      context.CancelFunc
 	execDay      string
 	location     string
+	netUserId    string
 )
 
 func main() {
@@ -62,12 +63,13 @@ func main() {
 		startAt string
 	)
 	flag.StringVar(&execDay, "day", "", "天数格式： 20250901")
+	flag.StringVar(&netUserId, "net_user_id", "", "账号")
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&location, "location", "4,5", "位置（1-10）")
 	flag.Parse()
 
-	if execDay == "" {
+	if execDay == "" || netUserId == "" {
 		showUsage()
 		os.Exit(1)
 	}
@@ -258,7 +260,7 @@ func processFieldList(response *APIResponse) error {
 				//	}()
 				//} else {
 				// 使用Go实现的签名生成器
-				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, "2025082802482655", "1002", "5003000101")
+				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, netUserId, "1002", "5003000101")
 				if err != nil {
 					log.Printf("生成newOrder签名失败: %v", err)
 					return
@@ -276,7 +278,7 @@ func processFieldList(response *APIResponse) error {
 }
 
 func fetchFieldListWithCurl() ([]byte, error) {
-	signatureParams, err := GenerateFieldListSignature(execDay, "2025082802482655", "5003000101", "1002")
+	signatureParams, err := GenerateFieldListSignature(execDay, netUserId, "5003000101", "1002")
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
@@ -295,6 +297,8 @@ func fetchFieldListWithCurl() ([]byte, error) {
 
 	var output []byte
 	output, err = curlCmd.Output()
+	fmt.Println(string(output))
+	os.Exit(1)
 	if err != nil {
 		return nil, fmt.Errorf("curl命令执行失败: %v", err)
 	}
@@ -447,12 +451,12 @@ func md5Hash(str string) string {
 }
 
 // generateSignature 根据原始JavaScript代码逆向的签名生成函数
-func generateSignature(apiPath string, params map[string]interface{}, options *SignatureOptions) (*SignatureResult, error) {
+func generateSignature(apiPath string, params map[string]any, options *SignatureOptions) (*SignatureResult, error) {
 	return generateSignatureWithTimestamp(apiPath, params, options, 0)
 }
 
 // generateSignatureWithTimestamp 生成签名，支持自定义时间戳（用于测试）
-func generateSignatureWithTimestamp(apiPath string, params map[string]interface{}, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
+func generateSignatureWithTimestamp(apiPath string, params map[string]any, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
 	if options == nil {
 		options = &SignatureOptions{}
 	}
@@ -469,7 +473,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]interface{
 	if customTimestamp > 0 {
 		timestamp = customTimestamp
 	} else {
-		timestamp = time.Now().UnixMilli()
+		timestamp = time.Now().Unix()
 	}
 
 	// 构建基础参数对象
@@ -477,7 +481,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]interface{
 		APIKey:    apiKey,
 		Timestamp: timestamp,
 		ChannelID: ChannelID,
-		Params:    make(map[string]interface{}),
+		Params:    make(map[string]any),
 	}
 
 	// 添加传入的参数
@@ -496,11 +500,10 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]interface{
 	result.TenantID = TenantID
 
 	// 构建用于签名的参数映射
-	signParams := make(map[string]interface{})
+	signParams := make(map[string]any)
 	signParams["apiKey"] = result.APIKey
 	signParams["timestamp"] = result.Timestamp
 	signParams["channelId"] = result.ChannelID
-
 	if result.CenterID != "" {
 		signParams["centerId"] = result.CenterID
 	}

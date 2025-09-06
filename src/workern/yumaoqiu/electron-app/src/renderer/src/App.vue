@@ -16,6 +16,16 @@
         <div class="form-section">
           <h3>基本配置</h3>
           <el-form :model="formData" label-width="100px" size="default">
+                        
+            <el-form-item label="用户账号" required>
+              <el-input
+                v-model="formData.netUserId"
+                placeholder="请输入用户账号"
+                style="width: 100%"
+                clearable
+              />
+            </el-form-item>
+
             <el-form-item label="预订日期" required>
               <el-date-picker
                 v-model="selectedDate"
@@ -67,6 +77,7 @@
                 />
               </el-select>
             </el-form-item>
+
           </el-form>
         </div>
 
@@ -191,7 +202,7 @@ const selectedTimeSegments = ref<number[]>([])
 const logContainer = ref<HTMLElement>()
 
 // Debug模式控制 - 默认关闭，可通过快捷键切换
-const isDebugMode = ref(false)
+const isDebugMode = ref(true)
 
 // 时间段配置
 const timeSlots = [
@@ -229,7 +240,8 @@ const formData = reactive({
   day: '',
   times: 5,
   startTime: '',
-  location: '4,5'
+  location: '4,5',
+  netUserId: ''
 })
 
 const goExecutableInfo = reactive({
@@ -248,7 +260,7 @@ const logs = ref<LogEntry[]>([])
 
 // 计算属性
 const canStart = computed(() => {
-  return formData.day && goExecutableInfo.exists && !isRunning.value
+  return formData.day && formData.netUserId && goExecutableInfo.exists && !isRunning.value
 })
 
 // 根据选择的日期返回对应的时间段配置
@@ -345,6 +357,11 @@ const startProgram = async () => {
     return
   }
   
+  if (!formData.netUserId) {
+    ElMessage.error('请输入用户账号')
+    return
+  }
+  
   if (typeof window === 'undefined' || !window.electronAPI) {
     ElMessage.error('当前运行在浏览器环境中，无法启动程序')
     return
@@ -357,7 +374,8 @@ const startProgram = async () => {
       day: formData.day,
       times: formData.times.toString(),
       startTime: formData.startTime,
-      location: formData.location
+      location: formData.location,
+      netUserId: formData.netUserId
     }
     
     addLog('info', `开始启动程序，参数: ${JSON.stringify(params)}`)
