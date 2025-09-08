@@ -27,7 +27,12 @@ import (
 
 %union {
 	item interface{} //TODO insert real field(s)
+	ident string
 }
+
+%token	<ident>
+	asof                 "AS OF"
+	toTimestamp          "TO TIMESTAMP"
 
 %token	AND
 %token	ANDNOT

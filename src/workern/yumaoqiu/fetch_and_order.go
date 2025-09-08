@@ -471,7 +471,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 	if customTimestamp > 0 {
 		timestamp = customTimestamp
 	} else {
-		timestamp = time.Now().Unix()
+		timestamp = time.Now().UnixMilli()
 	}
 
 	// 构建基础参数对象

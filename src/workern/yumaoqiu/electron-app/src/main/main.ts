@@ -21,7 +21,15 @@ function getGoExecutablePath(): string {
       executableName = 'fetch_and_order.exe'
       break
     case 'darwin':
-      executableName = 'fetch_and_order_darwin_arm64'
+      // 根据架构选择不同的二进制文件
+      if (process.arch === 'arm64') {
+        console.log('----arm64',)
+        executableName = 'fetch_and_order_darwin_arm64'
+      } else {
+        console.log('----amd64',)
+        
+        executableName = 'fetch_and_order_darwin_amd64'
+      }
       break
     case 'linux':
       executableName = 'fetch_and_order'
@@ -120,17 +128,12 @@ ipcMain.handle('start-go-program', async (event, params) => {
       args.push('-net_user_id', params.netUserId)
     }
 
-    // 判断是运行exe还是go文件
-    let command: string
-    let commandArgs: string[]
+    // 直接执行预编译的可执行文件
+    const command = goPath
+    const commandArgs = args
 
-    if (goPath.endsWith('.exe')) {
-      command = goPath
-      commandArgs = args
-    } else {
-      command = 'go'
-      commandArgs = ['run', goPath, ...args]
-    }
+    console.log('执行命令:', command)
+    console.log('命令参数:', commandArgs)
 
     goProcess = spawn(command, commandArgs, {
       cwd: path.dirname(goPath),
