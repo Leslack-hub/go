@@ -24,7 +24,7 @@ import (
 
 const (
 	TestJSONFile = "test.json"
-	RetryDelay   = 1 * time.Second
+	RetryDelay   = 500 * time.Millisecond
 )
 
 type FieldSegment struct {
