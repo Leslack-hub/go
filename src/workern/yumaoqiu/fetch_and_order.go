@@ -66,10 +66,10 @@ func main() {
 	flag.StringVar(&netUserId, "net_user_id", "", "账号")
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
-	flag.StringVar(&location, "location", "4,5", "位置（1-10）")
+	flag.StringVar(&location, "location", "", "位置（1-10）")
 	flag.Parse()
 
-	if execDay == "" || netUserId == "" {
+	if execDay == "" || netUserId == "" || location == "" {
 		showUsage()
 		os.Exit(1)
 	}
@@ -284,17 +284,8 @@ func fetchFieldListWithCurl() ([]byte, error) {
 	}
 
 	// 跨平台shell命令执行
-	var curlCmd *exec.Cmd
 	curlCommand := fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, signatureParams)
-
-	if os.Getenv("OS") == "Windows_NT" || len(os.Getenv("COMSPEC")) > 0 {
-		// Windows系统
-		curlCmd = exec.Command("cmd", "/c", curlCommand)
-	} else {
-		// Unix系统 (Linux, macOS)
-		curlCmd = exec.Command("sh", "-c", curlCommand)
-	}
-
+	curlCmd := exec.Command("sh", "-c", curlCommand)
 	var output []byte
 	output, err = curlCmd.Output()
 	if err != nil {
@@ -345,17 +336,7 @@ func (w *Worker) executeCommand(workerID int) error {
 		}
 
 		cmdCtx, cmdCancel := context.WithTimeout(w.ctx, 2*time.Second)
-
-		// 跨平台shell命令执行
-		var cmd *exec.Cmd
-		if os.Getenv("OS") == "Windows_NT" || len(os.Getenv("COMSPEC")) > 0 {
-			// Windows系统
-			cmd = exec.CommandContext(cmdCtx, "cmd", "/c", w.command)
-		} else {
-			// Unix系统 (Linux, macOS)
-			cmd = exec.CommandContext(cmdCtx, "sh", "-c", w.command)
-		}
-
+		cmd := exec.CommandContext(cmdCtx, "sh", "-c", w.command)
 		output, err := cmd.CombinedOutput()
 		cmdCancel()
 
