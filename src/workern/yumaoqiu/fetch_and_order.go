@@ -68,7 +68,6 @@ func main() {
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&location, "location", "", "位置（1-10）")
 	flag.Parse()
-
 	if execDay == "" || netUserId == "" || location == "" {
 		showUsage()
 		os.Exit(1)
@@ -220,9 +219,10 @@ func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 		return ""
 	}
 	l1, err := strconv.Atoi(locations[0])
-	if err == nil && l1 >= 1 && l1 <= 10 {
+	if err == nil && l1 <= len(segmentList) && l1 > 0 {
 		l1 = l1 - 1
-		if len(segmentList) > l1 && segmentList[l1].State == "0" && segmentList[l1].Price == 0 && segmentList[l1].FieldSegmentID != "" {
+		fmt.Println("位置：", l1)
+		if segmentList[l1].State == "0" && segmentList[l1].Price == 0 && segmentList[l1].FieldSegmentID != "" {
 			fieldSegmentIDs = append(fieldSegmentIDs, segmentList[3].FieldSegmentID)
 		}
 	}
@@ -230,12 +230,16 @@ func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 	if len(locations) >= 2 {
 		var l2 int
 		l2, err = strconv.Atoi(locations[1])
-		if err == nil && l2 >= 1 && l2 <= 10 {
+		if err == nil && l2 > 0 {
 			l2 = l2 - 1
+			fmt.Println("位置：", l2)
 			if len(segmentList) > l2 && segmentList[l2].State == "0" && segmentList[l2].Price == 0 && segmentList[l2].FieldSegmentID != "" {
 				fieldSegmentIDs = append(fieldSegmentIDs, segmentList[4].FieldSegmentID)
 			}
 		}
+	}
+	if len(fieldSegmentIDs) == 0 {
+		return ""
 	}
 
 	return strings.Join(fieldSegmentIDs, ",")

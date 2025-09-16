@@ -240,7 +240,7 @@ const formData = reactive({
   day: '',
   times: 5,
   startTime: '',
-  location: '4,5',
+  location: '',
   netUserId: ''
 })
 
