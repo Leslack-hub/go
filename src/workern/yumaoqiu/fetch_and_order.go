@@ -167,7 +167,6 @@ func main() {
 			log.Printf("✗ 第 %d 次尝试失败：JSON解析错误: %v\n", attempt, err)
 			if attempt == maxAttempts {
 				log.Printf("已达到最大尝试次数 (%d)，停止执行\n", maxAttempts)
-				log.Printf("最后一次响应内容: %s\n", string(data))
 				os.Exit(1)
 			}
 			time.Sleep(RetryDelay)
@@ -179,9 +178,8 @@ func main() {
 
 			if err = processFieldList(&response); err != nil {
 				log.Printf("✗ 处理场地列表失败: %v\n", err)
-				os.Exit(1)
 			}
-			break
+			log.Printf("响应内容: %s\n", data)
 		} else {
 			log.Printf("✗ 第 %d 次尝试失败：fieldList为空\n", attempt)
 
@@ -264,7 +262,7 @@ func processFieldList(response *APIResponse) error {
 				//	}()
 				//} else {
 				// 使用Go实现的签名生成器
-				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, netUserId, "1002", "5003000101")
+				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, netUserId, "1002", VenueId)
 				if err != nil {
 					log.Printf("生成newOrder签名失败: %v", err)
 					return
@@ -282,7 +280,7 @@ func processFieldList(response *APIResponse) error {
 }
 
 func fetchFieldListWithCurl() ([]byte, error) {
-	signatureParams, err := GenerateFieldListSignature(execDay, netUserId, "5003000101", "1002")
+	signatureParams, err := GenerateFieldListSignature(execDay, netUserId, VenueId, "1002")
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
@@ -400,6 +398,10 @@ const (
 	CenterID  = "50030001"
 	TenantID  = "82"
 	ChannelID = "11"
+	VenueId   = "5003000103"
+	//VenueId   = "5003000101"
+	FieldType = "1837"
+	//FieldType = "1841"
 )
 
 // KeyValue 键值对结构
@@ -635,7 +637,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID string) (stri
 		"serviceId":       serviceID,
 		"day":             day,
 		"selectByfullTag": "0",
-		"fieldType":       "1841",
+		"fieldType":       FieldType,
 	}
 
 	result, err := generateSignature(apiPath, params, nil)
@@ -652,7 +654,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID str
 	params := map[string]any{
 		"serviceId": serviceID,
 		"day":       day,
-		"fieldType": "1841",
+		"fieldType": FieldType,
 		"fieldInfo": fieldInfo,
 		"ticket":    "",
 		"randStr":   "",
@@ -677,7 +679,7 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID 
 		"serviceId":       serviceID,
 		"day":             day,
 		"selectByfullTag": "0",
-		"fieldType":       "1841",
+		"fieldType":       FieldType,
 	}
 
 	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
@@ -694,7 +696,7 @@ func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID
 	params := map[string]any{
 		"serviceId": serviceID,
 		"day":       day,
-		"fieldType": "1841",
+		"fieldType": FieldType,
 		"fieldInfo": fieldInfo,
 		"ticket":    "",
 		"randStr":   "",
