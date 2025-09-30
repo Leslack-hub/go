@@ -55,6 +55,7 @@ var (
 	execDay      string
 	location     string
 	netUserId    string
+	venueIdIndex string
 )
 
 func main() {
@@ -67,6 +68,7 @@ func main() {
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&location, "location", "", "位置（1-10）")
+	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆")
 	flag.Parse()
 	if execDay == "" || netUserId == "" || location == "" {
 		showUsage()
@@ -77,6 +79,15 @@ func main() {
 	if err != nil || maxAttempts <= 0 {
 		log.Println("错误: 最大执行次数必须是正整数")
 		os.Exit(1)
+	}
+
+	switch venueIdIndex {
+	case "2":
+		VenueId = "5003000103"
+		FieldType = "1837"
+	default:
+		VenueId = "5003000101"
+		FieldType = "1841"
 	}
 
 	if err = checkDependencies(); err != nil {
@@ -398,11 +409,15 @@ const (
 	CenterID  = "50030001"
 	TenantID  = "82"
 	ChannelID = "11"
-	VenueId   = "5003000103"
+	//VenueId   = "5003000103"
+	//FieldType = "1837"
 	//VenueId   = "5003000101"
-	FieldType = "1837"
 	//FieldType = "1841"
 )
+
+var VenueId string
+
+var FieldType string
 
 // KeyValue 键值对结构
 type KeyValue struct {
