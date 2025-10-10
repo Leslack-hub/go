@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/url"
 	"os"
 	"os/exec"
@@ -258,6 +259,9 @@ func processFieldList(response *APIResponse) error {
 	fieldCount := len(response.FieldList)
 	log.Printf("找到 %d 个场地\n", fieldCount)
 	wg := sync.WaitGroup{}
+	rand.Shuffle(fieldCount, func(i, j int) {
+		response.FieldList[i], response.FieldList[j] = response.FieldList[j], response.FieldList[i]
+	})
 	for i, field := range response.FieldList {
 		wg.Add(1)
 		go func() {
