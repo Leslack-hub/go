@@ -225,7 +225,7 @@ func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 	l1, err := strconv.Atoi(locations[0])
 	if err == nil && l1 <= len(segmentList) && l1 > 0 {
 		l1 = l1 - 1
-		fmt.Println("位置：", l1)
+		//fmt.Println("位置：", l1)
 		if segmentList[l1].State == "0" && segmentList[l1].Price == 0 && segmentList[l1].FieldSegmentID != "" {
 			fieldSegmentIDs = append(fieldSegmentIDs, segmentList[l1].FieldSegmentID)
 		}
@@ -236,7 +236,7 @@ func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 		l2, err = strconv.Atoi(locations[1])
 		if err == nil && l2 <= len(segmentList) && l2 > 0 {
 			l2 = l2 - 1
-			fmt.Println("位置：", l2)
+			//fmt.Println("位置：", l2)
 			if segmentList[l2].State == "0" && segmentList[l2].Price == 0 && segmentList[l2].FieldSegmentID != "" {
 				fieldSegmentIDs = append(fieldSegmentIDs, segmentList[l2].FieldSegmentID)
 			}
