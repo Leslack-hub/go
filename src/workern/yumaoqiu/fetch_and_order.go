@@ -199,6 +199,7 @@ Attempts:
 	}
 
 	workerChanWg.Wait()
+	close(workerChan)
 	fmt.Println("----------------------------------------")
 	fmt.Println("脚本执行完成")
 }
