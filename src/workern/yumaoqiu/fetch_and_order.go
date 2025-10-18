@@ -145,7 +145,14 @@ func main() {
 	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
 	log.Println("----------------------------------------")
 
+Attempts:
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-gCtx.Done():
+			log.Println("Context cancelled, stopping attempts.")
+			break Attempts
+		default:
+		}
 		log.Printf("第 %d 次尝试，正在获取场地列表...\n", attempt)
 
 		var response APIResponse
@@ -166,10 +173,6 @@ func main() {
 			data, err = fetchFieldListWithCurl()
 			if err != nil {
 				log.Printf("✗ 第 %d 次尝试失败：获取数据失败: %v\n", attempt, err)
-				if attempt == maxAttempts {
-					log.Printf("已达到最大尝试次数 (%d)，停止执行\n", maxAttempts)
-					os.Exit(1)
-				}
 				time.Sleep(RetryDelay)
 				continue
 			}
@@ -177,10 +180,6 @@ func main() {
 
 		if err = json.Unmarshal(data, &response); err != nil {
 			log.Printf("✗ 第 %d 次尝试失败：JSON解析错误: %v\n", attempt, err)
-			if attempt == maxAttempts {
-				log.Printf("已达到最大尝试次数 (%d)，停止执行\n", maxAttempts)
-				os.Exit(1)
-			}
 			time.Sleep(RetryDelay)
 			continue
 		}
@@ -194,14 +193,8 @@ func main() {
 			log.Printf("响应内容: %s\n", data)
 		} else {
 			log.Printf("✗ 第 %d 次尝试失败：fieldList为空\n", attempt)
-
-			if attempt == maxAttempts {
-				log.Printf("已达到最大尝试次数 (%d)，停止执行\n", maxAttempts)
-				os.Exit(1)
-			} else {
-				log.Printf("等待 %v 后重试...\n", RetryDelay)
-				time.Sleep(RetryDelay)
-			}
+			log.Printf("等待 %v 后重试...\n", RetryDelay)
+			time.Sleep(RetryDelay)
 		}
 	}
 
