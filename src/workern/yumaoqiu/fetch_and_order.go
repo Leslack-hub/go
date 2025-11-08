@@ -325,7 +325,8 @@ func (w *Worker) checkJSONResponse(output []byte) {
 		return
 	}
 
-	if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
+	if result.Message == "ok" {
+		//if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
 		log.Println("Success detected in JSON output, exiting program...")
 		w.cancelOnce.Do(func() {
 			w.cancel()
