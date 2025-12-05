@@ -48,15 +48,16 @@ type APIResponse struct {
 }
 
 var (
-	useTestData  = false
-	workerChan   chan string
-	workerChanWg *sync.WaitGroup
-	gCtx         context.Context
-	gCancel      context.CancelFunc
-	execDay      string
-	location     string
-	netUserId    string
-	venueIdIndex string
+	useTestData      = false
+	workerChan       chan string
+	workerChanWg     *sync.WaitGroup
+	gCtx             context.Context
+	gCancel          context.CancelFunc
+	execDay          string
+	location         string
+	netUserId        string
+	venueIdIndex     string
+	successExitCount int64
 )
 
 func main() {
@@ -70,6 +71,7 @@ func main() {
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&location, "location", "", "位置（1-10）")
 	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆")
+	flag.Int64Var(&successExitCount, "ok_count", 1, "收到多少次成功响应后退出")
 	flag.Parse()
 	if execDay == "" || netUserId == "" || location == "" {
 		showUsage()
@@ -79,6 +81,11 @@ func main() {
 	maxAttempts, err := strconv.Atoi(times)
 	if err != nil || maxAttempts <= 0 {
 		log.Println("错误: 最大执行次数必须是正整数")
+		os.Exit(1)
+	}
+
+	if successExitCount <= 0 {
+		log.Println("错误: 成功退出次数必须是正整数")
 		os.Exit(1)
 	}
 
@@ -110,7 +117,7 @@ func main() {
 	for range 30 {
 		go func() {
 			for cmd := range workerChan {
-				Run(cmd, 3, 1)
+				Run(cmd, 3, successExitCount, 1)
 				workerChanWg.Done()
 			}
 		}()
@@ -310,12 +317,14 @@ type Response struct {
 }
 
 type Worker struct {
-	command    string
-	maxExec    int64
-	execCount  *int64
-	ctx        context.Context
-	cancel     context.CancelFunc
-	cancelOnce sync.Once
+	command      string
+	maxExec      int64
+	execCount    *int64
+	successLimit int64
+	successCount *int64
+	ctx          context.Context
+	cancel       context.CancelFunc
+	cancelOnce   sync.Once
 }
 
 func (w *Worker) checkJSONResponse(output []byte) {
@@ -327,10 +336,13 @@ func (w *Worker) checkJSONResponse(output []byte) {
 
 	if result.Message == "ok" {
 		//if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
-		log.Println("Success detected in JSON output, exiting program...")
-		w.cancelOnce.Do(func() {
-			w.cancel()
-		})
+		count := atomic.AddInt64(w.successCount, 1)
+		log.Printf("Success detected in JSON output (%d/%d)...", count, w.successLimit)
+		if count >= w.successLimit {
+			w.cancelOnce.Do(func() {
+				w.cancel()
+			})
+		}
 	}
 }
 
@@ -366,7 +378,7 @@ func (w *Worker) executeCommand(workerID int) error {
 	}
 }
 
-func Run(command string, maxExec int64, numWorkers int) {
+func Run(command string, maxExec int64, successLimit int64, numWorkers int) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -375,13 +387,20 @@ func Run(command string, maxExec int64, numWorkers int) {
 		gCancel()
 	}()
 
+	if successLimit <= 0 {
+		successLimit = 1
+	}
+
 	var execCount int64
+	var successCount int64
 	worker := &Worker{
-		command:   command,
-		maxExec:   maxExec,
-		execCount: &execCount,
-		ctx:       gCtx,
-		cancel:    gCancel,
+		command:      command,
+		maxExec:      maxExec,
+		execCount:    &execCount,
+		successLimit: successLimit,
+		successCount: &successCount,
+		ctx:          gCtx,
+		cancel:       gCancel,
 	}
 
 	var wg sync.WaitGroup
