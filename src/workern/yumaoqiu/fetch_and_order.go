@@ -223,37 +223,87 @@ func checkDependencies() error {
 	return nil
 }
 
-func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
-	var fieldSegmentIDs []string
-	locations := strings.Split(location, ",")
+func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) string {
 	if len(locations) == 0 {
 		return ""
 	}
-	l1, err := strconv.Atoi(locations[0])
-	if err == nil && l1 <= len(segmentList) && l1 > 0 {
-		l1 = l1 - 1
-		//fmt.Println("位置：", l1)
-		if segmentList[l1].State == "0" && segmentList[l1].Price == 0 && segmentList[l1].FieldSegmentID != "" {
-			fieldSegmentIDs = append(fieldSegmentIDs, segmentList[l1].FieldSegmentID)
+	// 可用时段索引 -> ID
+	available := make(map[int]string)
+	for i, segment := range segmentList {
+		if segment.State == "0" && segment.Price == 0 && segment.FieldSegmentID != "" {
+			available[i] = segment.FieldSegmentID
 		}
 	}
-
-	if len(locations) >= 2 {
-		var l2 int
-		l2, err = strconv.Atoi(locations[1])
-		if err == nil && l2 <= len(segmentList) && l2 > 0 {
-			l2 = l2 - 1
-			//fmt.Println("位置：", l2)
-			if segmentList[l2].State == "0" && segmentList[l2].Price == 0 && segmentList[l2].FieldSegmentID != "" {
-				fieldSegmentIDs = append(fieldSegmentIDs, segmentList[l2].FieldSegmentID)
-			}
-		}
-	}
-	if len(fieldSegmentIDs) == 0 {
+	if len(available) == 0 {
 		return ""
 	}
 
-	return strings.Join(fieldSegmentIDs, ",")
+	// 以 l1 为中心，l1 向左递减、l2 向右递增
+	center := 0
+	if l1, err := strconv.Atoi(locations[0]); err == nil && l1 > 0 && l1 <= len(segmentList) {
+		center = l1 - 1
+	}
+	rightStart := center + 1
+	if len(locations) >= 2 {
+		if l2, err := strconv.Atoi(locations[1]); err == nil && l2 > 0 && l2 <= len(segmentList) {
+			rightStart = l2 - 1
+		}
+	}
+
+	withinBounds := func(idx int) bool {
+		return idx >= 0 && idx < len(segmentList)
+	}
+
+	// 优先：找到最靠近中心的连续两张（先向左递减，再向右递增）
+	for offset := 0; offset < len(segmentList); offset++ {
+		startLeft := center - offset
+		if withinBounds(startLeft) && withinBounds(startLeft+1) {
+			if id1, ok1 := available[startLeft]; ok1 {
+				if id2, ok2 := available[startLeft+1]; ok2 {
+					return strings.Join([]string{id1, id2}, ",")
+				}
+			}
+		}
+
+		startRight := rightStart + offset
+		if withinBounds(startRight) && withinBounds(startRight+1) {
+			if id1, ok1 := available[startRight]; ok1 {
+				if id2, ok2 := available[startRight+1]; ok2 {
+					return strings.Join([]string{id1, id2}, ",")
+				}
+			}
+		}
+	}
+
+	// 其次：按左右扩散顺序取最多两张
+	var ids []string
+	seen := make(map[int]struct{})
+	for step := 0; step < len(segmentList) && len(ids) < 2; step++ {
+		left := center - step
+		if withinBounds(left) {
+			if id, ok := available[left]; ok {
+				if _, exist := seen[left]; !exist {
+					ids = append(ids, id)
+					seen[left] = struct{}{}
+					if len(ids) == 2 {
+						break
+					}
+				}
+			}
+		}
+
+		right := rightStart + step
+		if withinBounds(right) {
+			if id, ok := available[right]; ok {
+				if _, exist := seen[right]; !exist {
+					ids = append(ids, id)
+					seen[right] = struct{}{}
+				}
+			}
+		}
+	}
+
+	return strings.Join(ids, ",")
 }
 
 func processFieldList(response *APIResponse) error {
@@ -268,7 +318,7 @@ func processFieldList(response *APIResponse) error {
 		go func() {
 			defer wg.Done()
 			log.Printf("处理第 %d 个场地...\n", i+1)
-			fieldSegmentIDs := extractFieldSegmentIDs(field.FieldSegmentList)
+			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(location, ","), field.FieldSegmentList)
 			if fieldSegmentIDs != "" {
 				log.Printf("  提取到的fieldSegmentIds: %s\n", fieldSegmentIDs)
 				//if rand.IntN(10) < 3 {
