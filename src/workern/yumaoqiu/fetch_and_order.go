@@ -272,6 +272,8 @@ Attempts:
 			}
 		} else {
 			data, err = fetchFieldListWithHTTP()
+			fmt.Println(string(data))
+			os.Exit(1)
 			if err != nil {
 				log.Printf("✗ 第 %d 次尝试失败：获取数据失败: %v\n", attempt, err)
 				time.Sleep(RetryDelay)
@@ -519,7 +521,7 @@ func processFieldList(response *APIResponse) error {
 
 // 优化：使用原生 HTTP 客户端获取场地列表
 func fetchFieldListWithHTTP() ([]byte, error) {
-	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002")
+	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002", OpenId)
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
@@ -671,7 +673,6 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 		ChannelID: ChannelID,
 		Params:    make(map[string]any),
 	}
-
 	// 添加传入的参数
 	for k, v := range params {
 		result.Params[k] = v
@@ -684,6 +685,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 		}
 	}
 
+	result.OpenId = result.Params["openId"].(string)
 	// 添加tenantId
 	result.TenantID = TenantID
 
@@ -839,7 +841,7 @@ func toURLParams(result *SignatureResult) string {
 }
 
 // GenerateFieldListSignature 生成fieldList签名
-func GenerateFieldListSignature(day, netUserID, venueID, serviceID string) (string, error) {
+func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId string) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
 		"netUserId":       netUserID,
@@ -848,6 +850,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID string) (stri
 		"day":             day,
 		"selectByfullTag": "0",
 		"fieldType":       FieldType,
+		"openId":          openId,
 	}
 
 	result, err := generateSignature(apiPath, params, nil)
