@@ -3,16 +3,18 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sort"
 	"strconv"
@@ -25,7 +27,14 @@ import (
 
 const (
 	TestJSONFile = "test.json"
-	RetryDelay   = 100 * time.Millisecond
+	// 优化：减少重试延迟，抢票时时间宝贵
+	RetryDelay = 10 * time.Millisecond
+	// 优化：增加并发 worker 数量
+	NumWorkers = 50
+	// 优化：每个场地发起的请求次数
+	MaxExecPerField = 2
+	// 预热提前时间（毫秒）
+	WarmupAdvanceMs = 100
 )
 
 type FieldSegment struct {
@@ -49,7 +58,7 @@ type APIResponse struct {
 
 var (
 	useTestData      = false
-	workerChan       chan string
+	workerChan       chan OrderRequest
 	workerChanWg     *sync.WaitGroup
 	gCtx             context.Context
 	gCancel          context.CancelFunc
@@ -58,7 +67,63 @@ var (
 	netUserId        string
 	venueIdIndex     string
 	successExitCount int64
+	// 优化：全局 HTTP 客户端，启用连接池和 Keep-Alive
+	httpClient *http.Client
+	// 优化：成功计数器
+	globalSuccessCount int64
 )
+
+// OrderRequest 用于传递下单请求信息
+type OrderRequest struct {
+	URL string
+}
+
+// 优化：创建高性能 HTTP 客户端
+func createHTTPClient() *http.Client {
+	// 自定义传输配置，优化连接池
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		// 优化：增加最大连接数
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		// 优化：禁用压缩以减少 CPU 开销
+		DisableCompression: true,
+		// 优化：启用 HTTP/2
+		ForceAttemptHTTP2: true,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+		},
+		// 优化：减少握手超时
+		TLSHandshakeTimeout: 3 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second,
+	}
+}
+
+// 优化：预热连接，提前建立 TCP 连接
+func warmupConnection() {
+	// 发送一个轻量级请求来预热连接
+	req, err := http.NewRequest("HEAD", "https://web.xports.cn/", nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Connection", "keep-alive")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("预热连接失败（可忽略）: %v", err)
+		return
+	}
+	resp.Body.Close()
+	log.Println("✓ 连接预热完成")
+}
 
 func main() {
 	var (
@@ -98,29 +163,32 @@ func main() {
 		FieldType = "1841"
 	}
 
-	if err = checkDependencies(); err != nil {
-		log.Printf("错误: %v\n", err)
-		os.Exit(1)
-	}
-
 	var shanghaiLoc *time.Location
 	shanghaiLoc, err = time.LoadLocation("Asia/Shanghai")
 	if err == nil {
 		time.Local = shanghaiLoc
 	}
 
+	// 优化：初始化高性能 HTTP 客户端
+	httpClient = createHTTPClient()
+
 	gCtx, gCancel = context.WithCancel(context.Background())
 	defer gCancel()
 
-	workerChan = make(chan string)
+	// 设置信号处理
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Println("收到终止信号，正在优雅退出...")
+		gCancel()
+	}()
+
+	// 优化：增加 worker 数量
+	workerChan = make(chan OrderRequest, 1000) // 增加缓冲区
 	workerChanWg = &sync.WaitGroup{}
-	for range 30 {
-		go func() {
-			for cmd := range workerChan {
-				Run(cmd, 3, successExitCount, 1)
-				workerChanWg.Done()
-			}
-		}()
+	for range NumWorkers {
+		go orderWorker()
 	}
 
 	if useTestData {
@@ -130,8 +198,11 @@ func main() {
 		}
 		log.Println("注意: 使用测试数据模式")
 	} else {
-		log.Println("注意: 使用实际HTTP请求模式")
+		log.Println("注意: 使用实际HTTP请求模式（原生HTTP客户端）")
 	}
+
+	// 优化：预热连接
+	warmupConnection()
 
 	if startAt != "" {
 		var start time.Time
@@ -142,15 +213,29 @@ func main() {
 		}
 		now := time.Now()
 		if !now.Before(start) {
+			log.Println("指定时间已过")
 			return
 		}
-		sub := start.Add(500 * time.Millisecond).Sub(now)
-		log.Println("sleep time:", sub.Seconds())
-		time.Sleep(sub)
+		// 优化：提前少量时间开始，考虑网络延迟
+		advanceTime := time.Duration(WarmupAdvanceMs) * time.Millisecond
+		targetTime := start.Add(-advanceTime)
+		sub := targetTime.Sub(now)
+		log.Printf("等待 %.2f 秒后开始（提前 %dms 启动）...\n", sub.Seconds(), WarmupAdvanceMs)
+
+		// 使用高精度定时器
+		timer := time.NewTimer(sub)
+		select {
+		case <-timer.C:
+		case <-gCtx.Done():
+			timer.Stop()
+			return
+		}
 	}
 
-	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
+	log.Printf("🚀 开始执行，最大尝试次数: %d，并发 Worker: %d\n", maxAttempts, NumWorkers)
 	log.Println("----------------------------------------")
+
+	startTime := time.Now()
 
 Attempts:
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -160,6 +245,13 @@ Attempts:
 			break Attempts
 		default:
 		}
+
+		// 检查是否已达到成功次数
+		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
+			log.Printf("✓ 已达到成功次数 %d，停止尝试\n", successExitCount)
+			break Attempts
+		}
+
 		log.Printf("第 %d 次尝试，正在获取场地列表...\n", attempt)
 
 		var response APIResponse
@@ -177,7 +269,7 @@ Attempts:
 				continue
 			}
 		} else {
-			data, err = fetchFieldListWithCurl()
+			data, err = fetchFieldListWithHTTP()
 			if err != nil {
 				log.Printf("✗ 第 %d 次尝试失败：获取数据失败: %v\n", attempt, err)
 				time.Sleep(RetryDelay)
@@ -192,35 +284,110 @@ Attempts:
 		}
 
 		if len(response.FieldList) > 0 {
-			log.Println("✓ 成功获取场地列表，正在处理数据...")
+			log.Printf("✓ 成功获取场地列表（%d个场地），正在处理数据...\n", len(response.FieldList))
 
 			if err = processFieldList(&response); err != nil {
 				log.Printf("✗ 处理场地列表失败: %v\n", err)
 			}
-			log.Printf("响应内容: %s\n", data)
 		} else {
-			log.Printf("✗ 第 %d 次尝试失败：fieldList为空\n", attempt)
-			log.Printf("等待 %v 后重试...\n", RetryDelay)
+			log.Printf("✗ 第 %d 次尝试失败：fieldList为空（error=%d, message=%s）\n",
+				attempt, response.Error, response.Message)
 			time.Sleep(RetryDelay)
 		}
 	}
 
+	// 等待所有下单请求完成
 	workerChanWg.Wait()
 	close(workerChan)
+
+	elapsed := time.Since(startTime)
 	fmt.Println("----------------------------------------")
-	fmt.Println("脚本执行完成")
+	fmt.Printf("脚本执行完成，耗时: %.2f秒，成功次数: %d\n", elapsed.Seconds(), atomic.LoadInt64(&globalSuccessCount))
+}
+
+// 优化：使用原生 HTTP 客户端的 worker
+func orderWorker() {
+	for req := range workerChan {
+		executeOrder(req)
+		workerChanWg.Done()
+	}
+}
+
+// 优化：使用原生 HTTP 执行下单请求
+func executeOrder(orderReq OrderRequest) {
+	for i := 0; i < MaxExecPerField; i++ {
+		select {
+		case <-gCtx.Done():
+			return
+		default:
+		}
+
+		// 检查是否已达到成功次数
+		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
+			return
+		}
+
+		req, err := http.NewRequestWithContext(gCtx, "GET", orderReq.URL, nil)
+		if err != nil {
+			continue
+		}
+
+		// 设置请求头
+		setRequestHeaders(req)
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Printf("下单请求失败: %v", err)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		// 检查响应
+		checkOrderResponse(body)
+	}
+}
+
+// 设置请求头
+func setRequestHeaders(req *http.Request) {
+	req.Header.Set("Host", "web.xports.cn")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390")
+	req.Header.Set("xweb_xhr", "1")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Referer", "https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	req.Header.Set("Content-Type", "application/json")
+}
+
+// 检查下单响应
+func checkOrderResponse(body []byte) {
+	log.Printf("下单响应: %s", string(body))
+
+	var result Response
+	if err := json.Unmarshal(body, &result); err != nil {
+		return
+	}
+
+	if result.Message == "ok" {
+		count := atomic.AddInt64(&globalSuccessCount, 1)
+		log.Printf("🎉 抢票成功！(%d/%d)", count, successExitCount)
+		if count >= successExitCount {
+			log.Println("✓ 已达到目标成功次数，停止后续请求")
+			gCancel()
+		}
+	}
 }
 
 func showUsage() {
 	flag.Usage()
-}
-
-func checkDependencies() error {
-	if _, err := exec.LookPath("curl"); err != nil {
-		return fmt.Errorf("需要安装 curl 命令")
-	}
-
-	return nil
 }
 
 func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) string {
@@ -310,56 +477,74 @@ func processFieldList(response *APIResponse) error {
 	fieldCount := len(response.FieldList)
 	log.Printf("找到 %d 个场地\n", fieldCount)
 	wg := sync.WaitGroup{}
+
+	// 优化：随机打乱以分散请求
 	rand.Shuffle(fieldCount, func(i, j int) {
 		response.FieldList[i], response.FieldList[j] = response.FieldList[j], response.FieldList[i]
 	})
+
 	for i, field := range response.FieldList {
 		wg.Add(1)
-		go func() {
+		go func(idx int, f *Field) {
 			defer wg.Done()
-			log.Printf("处理第 %d 个场地...\n", i+1)
-			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(location, ","), field.FieldSegmentList)
+
+			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(location, ","), f.FieldSegmentList)
 			if fieldSegmentIDs != "" {
-				log.Printf("  提取到的fieldSegmentIds: %s\n", fieldSegmentIDs)
-				//if rand.IntN(10) < 3 {
-				//	go func() {
-				//		time.Sleep(1 * time.Second)
-				//		workerChan <- "echo '{\"message\":\"ok\"}'"
-				//	}()
-				//} else {
-				// 使用Go实现的签名生成器
+				log.Printf("场地 %d: 提取到时段ID: %s\n", idx+1, fieldSegmentIDs)
+
+				// 生成签名
 				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, netUserId, "1002", VenueId)
 				if err != nil {
 					log.Printf("生成newOrder签名失败: %v", err)
 					return
 				}
+
+				orderURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?%s", signatureParams)
+
+				// 发送到 worker 队列
 				workerChanWg.Add(1)
-				workerChan <- fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?%s" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, signatureParams)
-				//}
+				select {
+				case workerChan <- OrderRequest{URL: orderURL}:
+				case <-gCtx.Done():
+					workerChanWg.Done()
+				}
 			} else {
-				log.Println("  未找到有效的场地时段ID")
+				log.Printf("场地 %d: 未找到有效的时段ID\n", idx+1)
 			}
-		}()
+		}(i, field)
 	}
 	wg.Wait()
 	return nil
 }
 
-func fetchFieldListWithCurl() ([]byte, error) {
+// 优化：使用原生 HTTP 客户端获取场地列表
+func fetchFieldListWithHTTP() ([]byte, error) {
 	signatureParams, err := GenerateFieldListSignature(execDay, netUserId, VenueId, "1002")
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
 
-	// 跨平台shell命令执行
-	curlCommand := fmt.Sprintf(`curl -s "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s" -H 'Host: web.xports.cn' -H 'Connection: keep-alive' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Mac MacWechat/WMPF MacWechat/3.8.7(0x13080712) UnifiedPCMacWechat(0xf2641015) XWEB/16390' -H 'xweb_xhr: 1' -H 'Accept: */*' -H 'Sec-Fetch-Site: cross-site' -H 'Sec-Fetch-Mode: cors' -H 'Sec-Fetch-Dest: empty' -H 'Referer: https://servicewechat.com/wxb75b9974eac7896e/11/page-frame.html' -H 'Accept-Language: zh-CN,zh;q=0.9' -H 'Content-Type: application/json'`, signatureParams)
-	curlCmd := exec.Command("sh", "-c", curlCommand)
-	var output []byte
-	output, err = curlCmd.Output()
+	requestURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s", signatureParams)
+
+	req, err := http.NewRequestWithContext(gCtx, "GET", requestURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("curl命令执行失败: %v", err)
+		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
-	return output, nil
+
+	setRequestHeaders(req)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	return body, nil
 }
 
 type Response struct {
@@ -397,78 +582,66 @@ func (w *Worker) checkJSONResponse(output []byte) {
 }
 
 func (w *Worker) executeCommand(workerID int) error {
-	interval := 100 * time.Millisecond
-
+	// 优化：移除执行间隔
 	for {
 		current := atomic.AddInt64(w.execCount, 1)
 		if current > w.maxExec {
-			log.Printf("Execution limit (%d) reached, exiting...", w.maxExec)
+			log.Printf("Execution limit (%d, %d) reached, exiting...", workerID, w.maxExec)
 			w.cancelOnce.Do(func() {
 				w.cancel()
 			})
 			return nil
 		}
 
-		cmdCtx, cmdCancel := context.WithTimeout(w.ctx, 2*time.Second)
-		cmd := exec.CommandContext(cmdCtx, "sh", "-c", w.command)
-		output, err := cmd.CombinedOutput()
-		cmdCancel()
-
-		if err != nil {
-			log.Printf("Worker %d execution %d error: %v", workerID, current, err)
-		} else {
-			go w.checkJSONResponse(output)
-		}
-
 		select {
 		case <-w.ctx.Done():
 			return w.ctx.Err()
-		case <-time.After(interval):
+		default:
 		}
 	}
 }
 
-func Run(command string, maxExec int64, successLimit int64, numWorkers int) {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("Received signal, shutting down gracefully...")
-		gCancel()
-	}()
-
-	if successLimit <= 0 {
-		successLimit = 1
-	}
-
-	var execCount int64
-	var successCount int64
-	worker := &Worker{
-		command:      command,
-		maxExec:      maxExec,
-		execCount:    &execCount,
-		successLimit: successLimit,
-		successCount: &successCount,
-		ctx:          gCtx,
-		cancel:       gCancel,
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(numWorkers)
-
-	for i := range numWorkers {
-		go func(workerID int) {
-			defer wg.Done()
-			if err2 := worker.executeCommand(workerID); err2 != nil &&
-				!errors.Is(err2, context.Canceled) {
-				log.Printf("Worker %d error: %v", workerID, err2)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	log.Println("All workers finished")
-}
+//func Run(command string, maxExec int64, successLimit int64, numWorkers int) {
+//	sigChan := make(chan os.Signal, 1)
+//	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+//	go func() {
+//		<-sigChan
+//		log.Println("Received signal, shutting down gracefully...")
+//		gCancel()
+//	}()
+//
+//	if successLimit <= 0 {
+//		successLimit = 1
+//	}
+//
+//	var execCount int64
+//	var successCount int64
+//	worker := &Worker{
+//		command:      command,
+//		maxExec:      maxExec,
+//		execCount:    &execCount,
+//		successLimit: successLimit,
+//		successCount: &successCount,
+//		ctx:          gCtx,
+//		cancel:       gCancel,
+//	}
+//
+//	var wg sync.WaitGroup
+//	wg.Add(numWorkers)
+//
+//	for i := range numWorkers {
+//		go func(workerID int) {
+//			defer wg.Done()
+//			if err2 := worker.executeCommand(workerID); err2 != nil &&
+//				!errors.Is(err2, context.Canceled) {
+//				log.Printf("Worker %d error: %v", workerID, err2)
+//			}
+//		}(i)
+//	}
+//
+//	wg.Wait()
+//	log.Println("All workers finished")
+//}
 
 // 配置常量
 const (
@@ -477,10 +650,6 @@ const (
 	CenterID  = "50030001"
 	TenantID  = "82"
 	ChannelID = "11"
-	//VenueId   = "5003000103"
-	//FieldType = "1837"
-	//VenueId   = "5003000101"
-	//FieldType = "1841"
 )
 
 var VenueId string
