@@ -57,20 +57,21 @@ type APIResponse struct {
 }
 
 var (
-	useTestData      = false
-	workerChan       chan OrderRequest
-	workerChanWg     *sync.WaitGroup
-	gCtx             context.Context
-	gCancel          context.CancelFunc
-	execDay          string
-	location         string
-	netUserId        string
-	venueIdIndex     string
-	successExitCount int64
+	UseTestData      = false
+	WorkerChan       chan OrderRequest
+	WorkerChanWg     *sync.WaitGroup
+	GCtx             context.Context
+	GCancel          context.CancelFunc
+	ExecDay          string
+	Location         string
+	NetUserId        string
+	OpenId           string
+	VenueIdIndex     string
+	SuccessExitCount int64
 	// 优化：全局 HTTP 客户端，启用连接池和 Keep-Alive
-	httpClient *http.Client
+	HttpClient *http.Client
 	// 优化：成功计数器
-	globalSuccessCount int64
+	GlobalSuccessCount int64
 )
 
 // OrderRequest 用于传递下单请求信息
@@ -116,7 +117,7 @@ func warmupConnection() {
 		return
 	}
 	req.Header.Set("Connection", "keep-alive")
-	resp, err := httpClient.Do(req)
+	resp, err := HttpClient.Do(req)
 	if err != nil {
 		log.Printf("预热连接失败（可忽略）: %v", err)
 		return
@@ -130,15 +131,16 @@ func main() {
 		times   string
 		startAt string
 	)
-	flag.StringVar(&execDay, "day", "", "天数格式： 20250901")
-	flag.StringVar(&netUserId, "net_user_id", "", "账号")
+	flag.StringVar(&ExecDay, "day", "", "天数格式： 20250901")
+	flag.StringVar(&NetUserId, "net_user_id", "", "账号")
+	flag.StringVar(&OpenId, "open_id", "", "openId")
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
-	flag.StringVar(&location, "location", "", "位置（1-10）")
-	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆")
-	flag.Int64Var(&successExitCount, "ok_count", 1, "收到多少次成功响应后退出")
+	flag.StringVar(&Location, "location", "", "位置（1-10）")
+	flag.StringVar(&VenueIdIndex, "venue_id_index", "", "场馆")
+	flag.Int64Var(&SuccessExitCount, "ok_count", 1, "收到多少次成功响应后退出")
 	flag.Parse()
-	if execDay == "" || netUserId == "" || location == "" {
+	if ExecDay == "" || NetUserId == "" || Location == "" {
 		showUsage()
 		os.Exit(1)
 	}
@@ -149,12 +151,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if successExitCount <= 0 {
+	if SuccessExitCount <= 0 {
 		log.Println("错误: 成功退出次数必须是正整数")
 		os.Exit(1)
 	}
 
-	switch venueIdIndex {
+	switch VenueIdIndex {
 	case "2":
 		VenueId = "5003000103"
 		FieldType = "1837"
@@ -170,10 +172,10 @@ func main() {
 	}
 
 	// 优化：初始化高性能 HTTP 客户端
-	httpClient = createHTTPClient()
+	HttpClient = createHTTPClient()
 
-	gCtx, gCancel = context.WithCancel(context.Background())
-	defer gCancel()
+	GCtx, GCancel = context.WithCancel(context.Background())
+	defer GCancel()
 
 	// 设置信号处理
 	sigChan := make(chan os.Signal, 1)
@@ -181,17 +183,17 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("收到终止信号，正在优雅退出...")
-		gCancel()
+		GCancel()
 	}()
 
 	// 优化：增加 worker 数量
-	workerChan = make(chan OrderRequest, 1000) // 增加缓冲区
-	workerChanWg = &sync.WaitGroup{}
+	WorkerChan = make(chan OrderRequest, 1000) // 增加缓冲区
+	WorkerChanWg = &sync.WaitGroup{}
 	for range NumWorkers {
 		go orderWorker()
 	}
 
-	if useTestData {
+	if UseTestData {
 		if _, err = os.Stat(TestJSONFile); os.IsNotExist(err) {
 			log.Printf("错误: 找不到测试数据文件 %s\n", TestJSONFile)
 			os.Exit(1)
@@ -226,7 +228,7 @@ func main() {
 		timer := time.NewTimer(sub)
 		select {
 		case <-timer.C:
-		case <-gCtx.Done():
+		case <-GCtx.Done():
 			timer.Stop()
 			return
 		}
@@ -240,15 +242,15 @@ func main() {
 Attempts:
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
-		case <-gCtx.Done():
+		case <-GCtx.Done():
 			log.Println("Context cancelled, stopping attempts.")
 			break Attempts
 		default:
 		}
 
 		// 检查是否已达到成功次数
-		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
-			log.Printf("✓ 已达到成功次数 %d，停止尝试\n", successExitCount)
+		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+			log.Printf("✓ 已达到成功次数 %d，停止尝试\n", SuccessExitCount)
 			break Attempts
 		}
 
@@ -257,7 +259,7 @@ Attempts:
 		var response APIResponse
 		var data []byte
 
-		if useTestData {
+		if UseTestData {
 			data, err = os.ReadFile(TestJSONFile)
 			if err != nil {
 				log.Printf("✗ 第 %d 次尝试失败：无法读取测试数据文件: %v\n", attempt, err)
@@ -297,19 +299,19 @@ Attempts:
 	}
 
 	// 等待所有下单请求完成
-	workerChanWg.Wait()
-	close(workerChan)
+	WorkerChanWg.Wait()
+	close(WorkerChan)
 
 	elapsed := time.Since(startTime)
 	fmt.Println("----------------------------------------")
-	fmt.Printf("脚本执行完成，耗时: %.2f秒，成功次数: %d\n", elapsed.Seconds(), atomic.LoadInt64(&globalSuccessCount))
+	fmt.Printf("脚本执行完成，耗时: %.2f秒，成功次数: %d\n", elapsed.Seconds(), atomic.LoadInt64(&GlobalSuccessCount))
 }
 
 // 优化：使用原生 HTTP 客户端的 worker
 func orderWorker() {
-	for req := range workerChan {
+	for req := range WorkerChan {
 		executeOrder(req)
-		workerChanWg.Done()
+		WorkerChanWg.Done()
 	}
 }
 
@@ -317,17 +319,17 @@ func orderWorker() {
 func executeOrder(orderReq OrderRequest) {
 	for i := 0; i < MaxExecPerField; i++ {
 		select {
-		case <-gCtx.Done():
+		case <-GCtx.Done():
 			return
 		default:
 		}
 
 		// 检查是否已达到成功次数
-		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
+		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
 			return
 		}
 
-		req, err := http.NewRequestWithContext(gCtx, "GET", orderReq.URL, nil)
+		req, err := http.NewRequestWithContext(GCtx, "GET", orderReq.URL, nil)
 		if err != nil {
 			continue
 		}
@@ -335,7 +337,7 @@ func executeOrder(orderReq OrderRequest) {
 		// 设置请求头
 		setRequestHeaders(req)
 
-		resp, err := httpClient.Do(req)
+		resp, err := HttpClient.Do(req)
 		if err != nil {
 			log.Printf("下单请求失败: %v", err)
 			continue
@@ -377,11 +379,11 @@ func checkOrderResponse(body []byte) {
 	}
 
 	if result.Message == "ok" {
-		count := atomic.AddInt64(&globalSuccessCount, 1)
-		log.Printf("🎉 抢票成功！(%d/%d)", count, successExitCount)
-		if count >= successExitCount {
+		count := atomic.AddInt64(&GlobalSuccessCount, 1)
+		log.Printf("🎉 抢票成功！(%d/%d)", count, SuccessExitCount)
+		if count >= SuccessExitCount {
 			log.Println("✓ 已达到目标成功次数，停止后续请求")
-			gCancel()
+			GCancel()
 		}
 	}
 }
@@ -488,25 +490,23 @@ func processFieldList(response *APIResponse) error {
 		go func(idx int, f *Field) {
 			defer wg.Done()
 
-			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(location, ","), f.FieldSegmentList)
+			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(Location, ","), f.FieldSegmentList)
 			if fieldSegmentIDs != "" {
 				log.Printf("场地 %d: 提取到时段ID: %s\n", idx+1, fieldSegmentIDs)
 
 				// 生成签名
-				signatureParams, err := GenerateNewOrderSignature(execDay, fieldSegmentIDs, netUserId, "1002", VenueId)
+				signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId)
 				if err != nil {
 					log.Printf("生成newOrder签名失败: %v", err)
 					return
 				}
-
 				orderURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?%s", signatureParams)
-
 				// 发送到 worker 队列
-				workerChanWg.Add(1)
+				WorkerChanWg.Add(1)
 				select {
-				case workerChan <- OrderRequest{URL: orderURL}:
-				case <-gCtx.Done():
-					workerChanWg.Done()
+				case WorkerChan <- OrderRequest{URL: orderURL}:
+				case <-GCtx.Done():
+					WorkerChanWg.Done()
 				}
 			} else {
 				log.Printf("场地 %d: 未找到有效的时段ID\n", idx+1)
@@ -519,21 +519,21 @@ func processFieldList(response *APIResponse) error {
 
 // 优化：使用原生 HTTP 客户端获取场地列表
 func fetchFieldListWithHTTP() ([]byte, error) {
-	signatureParams, err := GenerateFieldListSignature(execDay, netUserId, VenueId, "1002")
+	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002")
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
 
 	requestURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s", signatureParams)
 
-	req, err := http.NewRequestWithContext(gCtx, "GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
 
 	setRequestHeaders(req)
 
-	resp, err := httpClient.Do(req)
+	resp, err := HttpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP请求失败: %v", err)
 	}
@@ -625,6 +625,7 @@ type SignatureResult struct {
 	ChannelID string `json:"channelId"`
 	CenterID  string `json:"centerId,omitempty"`
 	TenantID  string `json:"tenantId,omitempty"`
+	OpenId    string `json:"openId,omitempty"`
 	Sign      string `json:"sign"`
 	// 动态参数
 	Params map[string]interface{} `json:"-"`
@@ -697,6 +698,10 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 	if result.TenantID != "" {
 		signParams["tenantId"] = result.TenantID
 	}
+	if result.OpenId != "" {
+		signParams["openId"] = result.OpenId
+	}
+	signParams["version"] = 1
 
 	// 添加业务参数
 	for k, v := range result.Params {
@@ -823,7 +828,10 @@ func toURLParams(result *SignatureResult) string {
 	if result.TenantID != "" {
 		params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
 	}
-
+	if result.OpenId != "" {
+		params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
+	}
+	params = append(params, fmt.Sprintf("version=%d", 1))
 	// 最后添加签名
 	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
 
@@ -851,7 +859,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID string) (stri
 }
 
 // GenerateNewOrderSignature 生成newOrder签名
-func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID string) (string, error) {
+func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, openId string) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/order/newOrder"
 	params := map[string]any{
 		"serviceId": serviceID,
@@ -862,6 +870,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID str
 		"randStr":   "",
 		"venueId":   venueID,
 		"netUserId": netUserID,
+		"openId":    openId,
 	}
 
 	result, err := generateSignature(apiPath, params, nil)
