@@ -551,56 +551,6 @@ type Response struct {
 	Message string `json:"message"`
 }
 
-type Worker struct {
-	command      string
-	maxExec      int64
-	execCount    *int64
-	successLimit int64
-	successCount *int64
-	ctx          context.Context
-	cancel       context.CancelFunc
-	cancelOnce   sync.Once
-}
-
-func (w *Worker) checkJSONResponse(output []byte) {
-	log.Println("exec result: ", string(output))
-	var result Response
-	if err := json.Unmarshal(output, &result); err != nil {
-		return
-	}
-
-	if result.Message == "ok" {
-		//if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
-		count := atomic.AddInt64(w.successCount, 1)
-		log.Printf("Success detected in JSON output (%d/%d)...", count, w.successLimit)
-		if count >= w.successLimit {
-			w.cancelOnce.Do(func() {
-				w.cancel()
-			})
-		}
-	}
-}
-
-func (w *Worker) executeCommand(workerID int) error {
-	// 优化：移除执行间隔
-	for {
-		current := atomic.AddInt64(w.execCount, 1)
-		if current > w.maxExec {
-			log.Printf("Execution limit (%d, %d) reached, exiting...", workerID, w.maxExec)
-			w.cancelOnce.Do(func() {
-				w.cancel()
-			})
-			return nil
-		}
-
-		select {
-		case <-w.ctx.Done():
-			return w.ctx.Err()
-		default:
-		}
-	}
-}
-
 //func Run(command string, maxExec int64, successLimit int64, numWorkers int) {
 //	sigChan := make(chan os.Signal, 1)
 //	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
