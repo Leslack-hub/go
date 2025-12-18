@@ -818,18 +818,27 @@ func toURLParams(result *SignatureResult) string {
 		if selectByfullTag, ok := result.Params["selectByfullTag"]; ok {
 			params = append(params, fmt.Sprintf("selectByfullTag=%s", url.QueryEscape(fmt.Sprintf("%v", selectByfullTag))))
 		}
+		if result.CenterID != "" {
+			params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
+		}
 		if fieldType, ok := result.Params["fieldType"]; ok {
 			params = append(params, fmt.Sprintf("fieldType=%s", url.QueryEscape(fmt.Sprintf("%v", fieldType))))
 		}
+		if result.TenantID != "" {
+			params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
+		}
 	}
 
-	// 添加centerId和tenantId
-	if result.CenterID != "" {
-		params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
+	// 对于 newOrder，添加 centerId 和 tenantId（如果还没添加）
+	if _, hasFieldInfo := result.Params["fieldInfo"]; hasFieldInfo {
+		if result.CenterID != "" {
+			params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
+		}
+		if result.TenantID != "" {
+			params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
+		}
 	}
-	if result.TenantID != "" {
-		params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
-	}
+
 	if result.OpenId != "" {
 		params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
 	}
@@ -885,7 +894,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, op
 }
 
 // GenerateFieldListSignatureWithTimestamp 生成fieldList签名（测试用，支持固定时间戳）
-func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID string, timestamp int64) (string, error) {
+func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID, openId string, timestamp int64) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
 		"netUserId":       netUserID,
@@ -894,6 +903,7 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID 
 		"day":             day,
 		"selectByfullTag": "0",
 		"fieldType":       FieldType,
+		"openId":          openId,
 	}
 
 	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
