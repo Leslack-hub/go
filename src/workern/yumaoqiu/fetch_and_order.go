@@ -902,7 +902,7 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID,
 		"serviceId":       serviceID,
 		"day":             day,
 		"selectByfullTag": "0",
-		"fieldType":       FieldType,
+		"fieldType":       "1837",
 		"openId":          openId,
 	}
 
