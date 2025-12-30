@@ -279,8 +279,6 @@ Attempts:
 			}
 		} else {
 			data, err = fetchFieldListWithHTTP()
-			fmt.Println(string(data))
-			os.Exit(1)
 			if err != nil {
 				log.Printf("✗ 第 %d 次尝试失败：获取数据失败: %v\n", attempt, err)
 				time.Sleep(RetryDelay)
@@ -578,48 +576,6 @@ type Response struct {
 	Message string `json:"message"`
 }
 
-//func Run(command string, maxExec int64, successLimit int64, numWorkers int) {
-//	sigChan := make(chan os.Signal, 1)
-//	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-//	go func() {
-//		<-sigChan
-//		log.Println("Received signal, shutting down gracefully...")
-//		gCancel()
-//	}()
-//
-//	if successLimit <= 0 {
-//		successLimit = 1
-//	}
-//
-//	var execCount int64
-//	var successCount int64
-//	worker := &Worker{
-//		command:      command,
-//		maxExec:      maxExec,
-//		execCount:    &execCount,
-//		successLimit: successLimit,
-//		successCount: &successCount,
-//		ctx:          gCtx,
-//		cancel:       gCancel,
-//	}
-//
-//	var wg sync.WaitGroup
-//	wg.Add(numWorkers)
-//
-//	for i := range numWorkers {
-//		go func(workerID int) {
-//			defer wg.Done()
-//			if err2 := worker.executeCommand(workerID); err2 != nil &&
-//				!errors.Is(err2, context.Canceled) {
-//				log.Printf("Worker %d error: %v", workerID, err2)
-//			}
-//		}(i)
-//	}
-//
-//	wg.Wait()
-//	log.Println("All workers finished")
-//}
-
 // 配置常量
 const (
 	APIKey    = "e98ce2565b09ecc0"
@@ -734,9 +690,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, apiSe
 	if result.TenantID != "" {
 		signParams["tenantId"] = result.TenantID
 	}
-	if result.OpenId != "" {
-		signParams["openId"] = result.OpenId
-	}
+	signParams["openId"] = result.OpenId
 	signParams["version"] = result.Version
 
 	// 添加业务参数
@@ -873,9 +827,7 @@ func toURLParams(result *SignatureResult) string {
 		}
 	}
 
-	if result.OpenId != "" {
-		params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
-	}
+	params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
 	params = append(params, fmt.Sprintf("version=%d", result.Version))
 	// 最后添加签名
 	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
