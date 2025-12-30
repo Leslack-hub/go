@@ -598,7 +598,7 @@ type Response struct {
 // 配置常量
 const (
 	APIKey    = "e98ce2565b09ecc0"
-	APISecret = "b28efc98ae90a878"
+	APISecret = "0gDFZNGBdobPSQjIUbp/NA=="
 	CenterID  = "50030001"
 	TenantID  = "82"
 	ChannelID = "11"
@@ -703,7 +703,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 	if result.OpenId != "" {
 		signParams["openId"] = result.OpenId
 	}
-	signParams["version"] = 1
+	signParams["version"] = 9
 
 	// 添加业务参数
 	for k, v := range result.Params {
@@ -842,7 +842,7 @@ func toURLParams(result *SignatureResult) string {
 	if result.OpenId != "" {
 		params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
 	}
-	params = append(params, fmt.Sprintf("version=%d", 1))
+	params = append(params, fmt.Sprintf("version=%d", 9))
 	// 最后添加签名
 	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
 
