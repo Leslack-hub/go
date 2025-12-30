@@ -107,134 +107,6 @@ func warmupConnection() {
 	}
 }
 
-func main() {
-	var (
-		times   string
-		startAt string
-	)
-	flag.StringVar(&ExecDay, "day", "", "天数格式： 20250901")
-	flag.StringVar(&NetUserId, "net_user_id", "", "账号")
-	flag.StringVar(&OpenId, "open_id", "", "openId")
-	flag.StringVar(&APISecret, "api_secret", "", "API密钥")
-	flag.IntVar(&APIVersion, "version", 0, "签名版本")
-	flag.StringVar(&times, "times", "5", "执行次数")
-	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
-	flag.StringVar(&Location, "location", "", "位置（1-10）")
-	flag.StringVar(&VenueIdIndex, "venue_id_index", "", "场馆")
-	flag.Int64Var(&SuccessExitCount, "ok_count", 1, "收到多少次成功响应后退出")
-	flag.Parse()
-
-	if ExecDay == "" ||
-		NetUserId == "" ||
-		Location == "" ||
-		APISecret == "" ||
-		APIVersion <= 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	maxAttempts, err := strconv.Atoi(times)
-	if err != nil || maxAttempts <= 0 {
-		log.Println("错误: 最大执行次数必须是正整数")
-		os.Exit(1)
-	}
-
-	if SuccessExitCount <= 0 {
-		SuccessExitCount = 1
-	}
-
-	switch VenueIdIndex {
-	case "2":
-		VenueId = "5003000103"
-		FieldType = "1837"
-	default:
-		VenueId = "5003000101"
-		FieldType = "1841"
-	}
-
-	shanghaiLoc, _ := time.LoadLocation("Asia/Shanghai")
-	if shanghaiLoc != nil {
-		time.Local = shanghaiLoc
-	}
-
-	// 初始化 HTTP 客户端
-	HttpClient = createHTTPClient()
-
-	GCtx, GCancel = context.WithCancel(context.Background())
-	defer GCancel()
-
-	// 初始化 worker
-	WorkerChan = make(chan OrderRequest, 500)
-	WorkerChanWg = &sync.WaitGroup{}
-	for range NumWorkers {
-		go orderWorker()
-	}
-
-	// 预热连接
-	warmupConnection()
-
-	if startAt != "" {
-		start, err := time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
-		if err != nil {
-			log.Println("时间格式错误")
-			return
-		}
-		now := time.Now()
-		if !now.Before(start) {
-			log.Println("指定时间已过")
-			return
-		}
-		targetTime := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond)
-		sub := targetTime.Sub(now)
-		log.Printf("等待 %.2f 秒后开始...\n", sub.Seconds())
-
-		timer := time.NewTimer(sub)
-		select {
-		case <-timer.C:
-		case <-GCtx.Done():
-			timer.Stop()
-			return
-		}
-	}
-
-	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		select {
-		case <-GCtx.Done():
-			goto End
-		default:
-		}
-
-		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
-			break
-		}
-
-		data, err := fetchFieldListWithHTTP()
-		if err != nil {
-			time.Sleep(RetryDelay)
-			continue
-		}
-
-		var response APIResponse
-		if err = json.Unmarshal(data, &response); err != nil {
-			time.Sleep(RetryDelay)
-			continue
-		}
-
-		if len(response.FieldList) > 0 {
-			processFieldList(&response)
-		} else {
-			time.Sleep(RetryDelay)
-		}
-	}
-
-End:
-	WorkerChanWg.Wait()
-	close(WorkerChan)
-	log.Printf("执行完成，成功次数: %d\n", atomic.LoadInt64(&GlobalSuccessCount))
-}
-
 func orderWorker() {
 	for req := range WorkerChan {
 		executeOrder(req)
@@ -695,4 +567,132 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, apiSe
 	result.Sign = md5Hash(encodedString)
 
 	return result, nil
+}
+
+func main() {
+	var (
+		times   string
+		startAt string
+	)
+	flag.StringVar(&ExecDay, "day", "", "天数格式： 20250901")
+	flag.StringVar(&NetUserId, "net_user_id", "", "账号")
+	flag.StringVar(&OpenId, "open_id", "", "openId")
+	flag.StringVar(&APISecret, "api_secret", "", "API密钥")
+	flag.IntVar(&APIVersion, "version", 0, "签名版本")
+	flag.StringVar(&times, "times", "5", "执行次数")
+	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
+	flag.StringVar(&Location, "location", "", "位置（1-10）")
+	flag.StringVar(&VenueIdIndex, "venue_id_index", "", "场馆")
+	flag.Int64Var(&SuccessExitCount, "ok_count", 1, "收到多少次成功响应后退出")
+	flag.Parse()
+
+	if ExecDay == "" ||
+		NetUserId == "" ||
+		Location == "" ||
+		APISecret == "" ||
+		APIVersion <= 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	maxAttempts, err := strconv.Atoi(times)
+	if err != nil || maxAttempts <= 0 {
+		log.Println("错误: 最大执行次数必须是正整数")
+		os.Exit(1)
+	}
+
+	if SuccessExitCount <= 0 {
+		SuccessExitCount = 1
+	}
+
+	switch VenueIdIndex {
+	case "2":
+		VenueId = "5003000103"
+		FieldType = "1837"
+	default:
+		VenueId = "5003000101"
+		FieldType = "1841"
+	}
+
+	shanghaiLoc, _ := time.LoadLocation("Asia/Shanghai")
+	if shanghaiLoc != nil {
+		time.Local = shanghaiLoc
+	}
+
+	// 初始化 HTTP 客户端
+	HttpClient = createHTTPClient()
+
+	GCtx, GCancel = context.WithCancel(context.Background())
+	defer GCancel()
+
+	// 初始化 worker
+	WorkerChan = make(chan OrderRequest, 500)
+	WorkerChanWg = &sync.WaitGroup{}
+	for range NumWorkers {
+		go orderWorker()
+	}
+
+	// 预热连接
+	warmupConnection()
+
+	if startAt != "" {
+		start, err := time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
+		if err != nil {
+			log.Println("时间格式错误")
+			return
+		}
+		now := time.Now()
+		if !now.Before(start) {
+			log.Println("指定时间已过")
+			return
+		}
+		targetTime := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond)
+		sub := targetTime.Sub(now)
+		log.Printf("等待 %.2f 秒后开始...\n", sub.Seconds())
+
+		timer := time.NewTimer(sub)
+		select {
+		case <-timer.C:
+		case <-GCtx.Done():
+			timer.Stop()
+			return
+		}
+	}
+
+	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-GCtx.Done():
+			goto End
+		default:
+		}
+
+		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+			break
+		}
+
+		data, err := fetchFieldListWithHTTP()
+		if err != nil {
+			time.Sleep(RetryDelay)
+			continue
+		}
+
+		var response APIResponse
+		if err = json.Unmarshal(data, &response); err != nil {
+			time.Sleep(RetryDelay)
+			continue
+		}
+
+		if len(response.FieldList) > 0 {
+			processFieldList(&response)
+		} else {
+			time.Sleep(RetryDelay)
+		}
+	}
+
+End:
+	WorkerChanWg.Wait()
+	close(WorkerChan)
+	log.Printf("执行完成，成功次数: %d\n", atomic.LoadInt64(&GlobalSuccessCount))
 }
