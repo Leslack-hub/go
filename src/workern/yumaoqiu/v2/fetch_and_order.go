@@ -10,33 +10,25 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
 const (
-	TestJSONFile = "test.json"
-	// 优化：减少重试延迟，抢票时时间宝贵
-	RetryDelay = 10 * time.Millisecond
-	// 减少并发 worker 数量，避免同时请求过多
-	NumWorkers = 8
-	// 每个场地发起的请求次数减少
-	MaxExecPerField = 2
-	// 限制同时进行的下单请求数（硬性上限）
-	MaxConcurrentOrders = 3
+	// 减少重试延迟
+	RetryDelay = 5 * time.Millisecond
+	// 并发 worker 数量
+	NumWorkers = 16
 	// 预热提前时间（毫秒）
-	WarmupAdvanceMs = 100
+	WarmupAdvanceMs = 50
 )
 
 type FieldSegment struct {
@@ -59,7 +51,6 @@ type APIResponse struct {
 }
 
 var (
-	UseTestData      = false
 	WorkerChan       chan OrderRequest
 	WorkerChanWg     *sync.WaitGroup
 	GCtx             context.Context
@@ -70,12 +61,10 @@ var (
 	OpenId           string
 	VenueIdIndex     string
 	SuccessExitCount int64
-	// 优化：全局 HTTP 客户端，启用连接池和 Keep-Alive
+	// 全局 HTTP 客户端
 	HttpClient *http.Client
-	// 优化：成功计数器
+	// 成功计数器
 	GlobalSuccessCount int64
-	// 限制同时下单请求的并发量
-	OrderLimiter chan struct{}
 )
 
 // OrderRequest 用于传递下单请求信息
@@ -83,51 +72,39 @@ type OrderRequest struct {
 	URL string
 }
 
-// 优化：创建高性能 HTTP 客户端
+// 创建高性能 HTTP 客户端
 func createHTTPClient() *http.Client {
-	// 自定义传输配置，优化连接池
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   2 * time.Second,
+			KeepAlive: 60 * time.Second,
 		}).DialContext,
-		// 优化：增加最大连接数
-		MaxIdleConns:        200,
-		MaxIdleConnsPerHost: 100,
-		MaxConnsPerHost:     100,
-		IdleConnTimeout:     90 * time.Second,
-		// 优化：禁用压缩以减少 CPU 开销
-		DisableCompression: true,
-		// 优化：启用 HTTP/2
-		ForceAttemptHTTP2: true,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-		},
-		// 优化：减少握手超时
-		TLSHandshakeTimeout: 3 * time.Second,
+		MaxIdleConns:          500,
+		MaxIdleConnsPerHost:   200,
+		MaxConnsPerHost:       200,
+		IdleConnTimeout:       120 * time.Second,
+		DisableCompression:    true,
+		ForceAttemptHTTP2:     true,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: false},
+		TLSHandshakeTimeout:   2 * time.Second,
+		ResponseHeaderTimeout: 3 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   5 * time.Second,
+		Timeout:   3 * time.Second,
 	}
 }
 
-// 优化：预热连接，提前建立 TCP 连接
+// 预热连接
 func warmupConnection() {
-	// 发送一个轻量级请求来预热连接
-	req, err := http.NewRequest("HEAD", "https://web.xports.cn/", nil)
-	if err != nil {
-		return
-	}
+	req, _ := http.NewRequest("HEAD", "https://web.xports.cn/", nil)
 	req.Header.Set("Connection", "keep-alive")
 	resp, err := HttpClient.Do(req)
-	if err != nil {
-		log.Printf("预热连接失败（可忽略）: %v", err)
-		return
+	if err == nil {
+		resp.Body.Close()
 	}
-	resp.Body.Close()
-	log.Println("✓ 连接预热完成")
 }
 
 func main() {
@@ -146,8 +123,13 @@ func main() {
 	flag.StringVar(&VenueIdIndex, "venue_id_index", "", "场馆")
 	flag.Int64Var(&SuccessExitCount, "ok_count", 1, "收到多少次成功响应后退出")
 	flag.Parse()
-	if ExecDay == "" || NetUserId == "" || Location == "" || APISecret == "" || APIVersion <= 0 {
-		showUsage()
+
+	if ExecDay == "" ||
+		NetUserId == "" ||
+		Location == "" ||
+		APISecret == "" ||
+		APIVersion <= 0 {
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -158,8 +140,7 @@ func main() {
 	}
 
 	if SuccessExitCount <= 0 {
-		log.Println("错误: 成功退出次数必须是正整数")
-		os.Exit(1)
+		SuccessExitCount = 1
 	}
 
 	switch VenueIdIndex {
@@ -171,51 +152,29 @@ func main() {
 		FieldType = "1841"
 	}
 
-	var shanghaiLoc *time.Location
-	shanghaiLoc, err = time.LoadLocation("Asia/Shanghai")
-	if err == nil {
+	shanghaiLoc, _ := time.LoadLocation("Asia/Shanghai")
+	if shanghaiLoc != nil {
 		time.Local = shanghaiLoc
 	}
 
-	// 优化：初始化高性能 HTTP 客户端
+	// 初始化 HTTP 客户端
 	HttpClient = createHTTPClient()
-	OrderLimiter = make(chan struct{}, MaxConcurrentOrders)
 
 	GCtx, GCancel = context.WithCancel(context.Background())
 	defer GCancel()
 
-	// 设置信号处理
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("收到终止信号，正在优雅退出...")
-		GCancel()
-	}()
-
-	// 降低并发，减少同时请求接口
-	WorkerChan = make(chan OrderRequest, 200)
+	// 初始化 worker
+	WorkerChan = make(chan OrderRequest, 500)
 	WorkerChanWg = &sync.WaitGroup{}
 	for range NumWorkers {
 		go orderWorker()
 	}
 
-	if UseTestData {
-		if _, err = os.Stat(TestJSONFile); os.IsNotExist(err) {
-			log.Printf("错误: 找不到测试数据文件 %s\n", TestJSONFile)
-			os.Exit(1)
-		}
-		log.Println("注意: 使用测试数据模式")
-	} else {
-		log.Println("注意: 使用实际HTTP请求模式（原生HTTP客户端）")
-	}
-
-	// 优化：预热连接
+	// 预热连接
 	warmupConnection()
 
 	if startAt != "" {
-		var start time.Time
-		start, err = time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
+		start, err := time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
 		if err != nil {
 			log.Println("时间格式错误")
 			return
@@ -225,13 +184,10 @@ func main() {
 			log.Println("指定时间已过")
 			return
 		}
-		// 优化：提前少量时间开始，考虑网络延迟
-		advanceTime := time.Duration(WarmupAdvanceMs) * time.Millisecond
-		targetTime := start.Add(-advanceTime)
+		targetTime := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond)
 		sub := targetTime.Sub(now)
-		log.Printf("等待 %.2f 秒后开始（提前 %dms 启动）...\n", sub.Seconds(), WarmupAdvanceMs)
+		log.Printf("等待 %.2f 秒后开始...\n", sub.Seconds())
 
-		// 使用高精度定时器
 		timer := time.NewTimer(sub)
 		select {
 		case <-timer.C:
@@ -241,80 +197,44 @@ func main() {
 		}
 	}
 
-	log.Printf("🚀 开始执行，最大尝试次数: %d，并发 Worker: %d，同时下单上限: %d\n", maxAttempts, NumWorkers, MaxConcurrentOrders)
-	log.Println("----------------------------------------")
+	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
 
-	startTime := time.Now()
-
-Attempts:
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
 		case <-GCtx.Done():
-			log.Println("Context cancelled, stopping attempts.")
-			break Attempts
+			goto End
 		default:
 		}
 
-		// 检查是否已达到成功次数
 		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
-			log.Printf("✓ 已达到成功次数 %d，停止尝试\n", SuccessExitCount)
-			break Attempts
+			break
 		}
 
-		log.Printf("第 %d 次尝试，正在获取场地列表...\n", attempt)
+		data, err := fetchFieldListWithHTTP()
+		if err != nil {
+			time.Sleep(RetryDelay)
+			continue
+		}
 
 		var response APIResponse
-		var data []byte
-
-		if UseTestData {
-			data, err = os.ReadFile(TestJSONFile)
-			if err != nil {
-				log.Printf("✗ 第 %d 次尝试失败：无法读取测试数据文件: %v\n", attempt, err)
-				if attempt == maxAttempts {
-					log.Printf("已达到最大尝试次数 (%d)，停止执行\n", maxAttempts)
-					os.Exit(1)
-				}
-				time.Sleep(RetryDelay)
-				continue
-			}
-		} else {
-			data, err = fetchFieldListWithHTTP()
-			if err != nil {
-				log.Printf("✗ 第 %d 次尝试失败：获取数据失败: %v\n", attempt, err)
-				time.Sleep(RetryDelay)
-				continue
-			}
-		}
-
 		if err = json.Unmarshal(data, &response); err != nil {
-			log.Printf("✗ 第 %d 次尝试失败：JSON解析错误: %v\n", attempt, err)
 			time.Sleep(RetryDelay)
 			continue
 		}
 
 		if len(response.FieldList) > 0 {
-			log.Printf("✓ 成功获取场地列表（%d个场地），正在处理数据...\n", len(response.FieldList))
-
-			if err = processFieldList(&response); err != nil {
-				log.Printf("✗ 处理场地列表失败: %v\n", err)
-			}
+			processFieldList(&response)
 		} else {
-			log.Printf("✗ 第 %d 次尝试失败：fieldList为空（error=%d, message=%s）\n",
-				attempt, response.Error, response.Message)
 			time.Sleep(RetryDelay)
 		}
 	}
 
-	// 等待所有下单请求完成
+End:
 	WorkerChanWg.Wait()
 	close(WorkerChan)
-
-	elapsed := time.Since(startTime)
-	fmt.Println("----------------------------------------")
-	fmt.Printf("脚本执行完成，耗时: %.2f秒，成功次数: %d\n", elapsed.Seconds(), atomic.LoadInt64(&GlobalSuccessCount))
+	log.Printf("执行完成，成功次数: %d\n", atomic.LoadInt64(&GlobalSuccessCount))
 }
 
-// 优化：使用原生 HTTP 客户端的 worker
 func orderWorker() {
 	for req := range WorkerChan {
 		executeOrder(req)
@@ -322,63 +242,38 @@ func orderWorker() {
 	}
 }
 
-func acquireOrderSlot() bool {
-	select {
-	case OrderLimiter <- struct{}{}:
-		return true
-	case <-GCtx.Done():
-		return false
-	}
-}
-
-func releaseOrderSlot() {
-	<-OrderLimiter
-}
-
-// 优化：使用原生 HTTP 执行下单请求
 func executeOrder(orderReq OrderRequest) {
-	for i := 0; i < MaxExecPerField; i++ {
-		select {
-		case <-GCtx.Done():
-			return
-		default:
-		}
-
-		// 检查是否已达到成功次数
-		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
-			return
-		}
-
-		req, err := http.NewRequestWithContext(GCtx, "GET", orderReq.URL, nil)
-		if err != nil {
-			continue
-		}
-
-		// 设置请求头
-		setRequestHeaders(req)
-
-		if !acquireOrderSlot() {
-			return
-		}
-		resp, err := HttpClient.Do(req)
-		releaseOrderSlot()
-		if err != nil {
-			log.Printf("下单请求失败: %v", err)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			continue
-		}
-
-		// 检查响应
-		checkOrderResponse(body)
+	select {
+	case <-GCtx.Done():
+		return
+	default:
 	}
+
+	if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+		return
+	}
+
+	req, err := http.NewRequestWithContext(GCtx, "GET", orderReq.URL, nil)
+	if err != nil {
+		return
+	}
+
+	setRequestHeaders(req)
+
+	resp, err := HttpClient.Do(req)
+	if err != nil {
+		return
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return
+	}
+
+	checkOrderResponse(body)
 }
 
-// 设置请求头
 func setRequestHeaders(req *http.Request) {
 	req.Header.Set("Host", "web.xports.cn")
 	req.Header.Set("Connection", "keep-alive")
@@ -393,7 +288,6 @@ func setRequestHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 }
 
-// 检查下单响应
 func checkOrderResponse(body []byte) {
 	log.Printf("下单响应: %s", string(body))
 
@@ -402,26 +296,19 @@ func checkOrderResponse(body []byte) {
 		return
 	}
 
-	if result.Message == "ok" ||
-		result.Message == "场地预定中，请勿重复提交" {
+	if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
 		count := atomic.AddInt64(&GlobalSuccessCount, 1)
 		log.Printf("🎉 抢票成功！(%d/%d)", count, SuccessExitCount)
 		if count >= SuccessExitCount {
-			log.Println("✓ 已达到目标成功次数，停止后续请求")
 			GCancel()
 		}
 	}
-}
-
-func showUsage() {
-	flag.Usage()
 }
 
 func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) string {
 	if len(locations) == 0 {
 		return ""
 	}
-	// 可用时段索引 -> ID
 	available := make(map[int]string)
 	for i, segment := range segmentList {
 		if segment.State == "0" && segment.Price == 0 && segment.FieldSegmentID != "" {
@@ -432,7 +319,6 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 		return ""
 	}
 
-	// 以 l1 为中心，l1 向左递减、l2 向右递增
 	center := 0
 	if l1, err := strconv.Atoi(locations[0]); err == nil && l1 > 0 && l1 <= len(segmentList) {
 		center = l1 - 1
@@ -448,13 +334,13 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 		return idx >= 0 && idx < len(segmentList)
 	}
 
-	// 优先：找到最靠近中心的连续两张（先向左递减，再向右递增）
+	// 找连续两张
 	for offset := 0; offset < len(segmentList); offset++ {
 		startLeft := center - offset
 		if withinBounds(startLeft) && withinBounds(startLeft+1) {
 			if id1, ok1 := available[startLeft]; ok1 {
 				if id2, ok2 := available[startLeft+1]; ok2 {
-					return strings.Join([]string{id1, id2}, ",")
+					return id1 + "," + id2
 				}
 			}
 		}
@@ -463,13 +349,13 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 		if withinBounds(startRight) && withinBounds(startRight+1) {
 			if id1, ok1 := available[startRight]; ok1 {
 				if id2, ok2 := available[startRight+1]; ok2 {
-					return strings.Join([]string{id1, id2}, ",")
+					return id1 + "," + id2
 				}
 			}
 		}
 	}
 
-	// 其次：按左右扩散顺序取最多两张
+	// 取最多两张
 	var ids []string
 	seen := make(map[int]struct{})
 	for step := 0; step < len(segmentList) && len(ids) < 2; step++ {
@@ -500,76 +386,57 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 	return strings.Join(ids, ",")
 }
 
-func processFieldList(response *APIResponse) error {
-	fieldCount := len(response.FieldList)
-	log.Printf("找到 %d 个场地\n", fieldCount)
+func processFieldList(response *APIResponse) {
 	wg := sync.WaitGroup{}
-
-	// 优化：随机打乱以分散请求
-	rand.Shuffle(fieldCount, func(i, j int) {
-		response.FieldList[i], response.FieldList[j] = response.FieldList[j], response.FieldList[i]
-	})
-
 	for i, field := range response.FieldList {
 		wg.Add(1)
 		go func(idx int, f *Field) {
 			defer wg.Done()
 
 			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(Location, ","), f.FieldSegmentList)
-			if fieldSegmentIDs != "" {
-				log.Printf("场地 %d: 提取到时段ID: %s\n", idx+1, fieldSegmentIDs)
+			if fieldSegmentIDs == "" {
+				return
+			}
 
-				// 生成签名
-				signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId, APISecret, APIVersion)
-				if err != nil {
-					log.Printf("生成newOrder签名失败: %v", err)
-					return
-				}
-				orderURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?%s", signatureParams)
-				// 发送到 worker 队列
-				WorkerChanWg.Add(1)
-				select {
-				case WorkerChan <- OrderRequest{URL: orderURL}:
-				case <-GCtx.Done():
-					WorkerChanWg.Done()
-				}
-			} else {
-				log.Printf("场地 %d: 未找到有效的时段ID\n", idx+1)
+			signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId, APISecret, APIVersion)
+			if err != nil {
+				return
+			}
+			orderURL := "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?" + signatureParams
+
+			WorkerChanWg.Add(1)
+			select {
+			case WorkerChan <- OrderRequest{URL: orderURL}:
+			case <-GCtx.Done():
+				WorkerChanWg.Done()
 			}
 		}(i, field)
 	}
 	wg.Wait()
-	return nil
 }
 
-// 优化：使用原生 HTTP 客户端获取场地列表
 func fetchFieldListWithHTTP() ([]byte, error) {
 	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002", OpenId, APISecret, APIVersion)
 	if err != nil {
-		return nil, fmt.Errorf("生成签名失败: %v", err)
+		return nil, err
 	}
 
-	requestURL := fmt.Sprintf("https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?%s", signatureParams)
+	requestURL := "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?" + signatureParams
 
 	req, err := http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
+		return nil, err
 	}
 
 	setRequestHeaders(req)
 
 	resp, err := HttpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP请求失败: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %v", err)
-	}
-
-	return body, nil
+	return io.ReadAll(resp.Body)
 }
 
 type Response struct {
@@ -591,251 +458,105 @@ var (
 	APIVersion int
 )
 
-// KeyValue 键值对结构
 type KeyValue struct {
 	Key   string
 	Value string
 }
 
-// SignatureOptions 签名选项
-type SignatureOptions struct {
-	Prefix     string
-	NoCenterID bool
-}
-
-// SignatureResult 签名结果
 type SignatureResult struct {
-	APIKey    string `json:"apiKey"`
-	Timestamp int64  `json:"timestamp"`
-	ChannelID string `json:"channelId"`
-	CenterID  string `json:"centerId,omitempty"`
-	TenantID  string `json:"tenantId,omitempty"`
-	OpenId    string `json:"openId,omitempty"`
-	Version   int    `json:"version"`
-	Sign      string `json:"sign"`
-	// 动态参数
-	Params map[string]interface{} `json:"-"`
+	APIKey    string
+	Timestamp int64
+	ChannelID string
+	CenterID  string
+	TenantID  string
+	OpenId    string
+	Version   int
+	Sign      string
+	Params    map[string]interface{}
 }
 
-// md5Hash MD5加密函数
 func md5Hash(str string) string {
 	h := md5.New()
 	h.Write([]byte(str))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// generateSignature 根据原始JavaScript代码逆向的签名生成函数
-func generateSignature(apiPath string, params map[string]any, apiSecret string, version int, options *SignatureOptions) (*SignatureResult, error) {
-	return generateSignatureWithTimestamp(apiPath, params, apiSecret, version, options, 0)
+func generateSignature(apiPath string, params map[string]any, apiSecret string, version int) (*SignatureResult, error) {
+	return generateSignatureWithTimestamp(apiPath, params, apiSecret, version, 0)
 }
 
-// generateSignatureWithTimestamp 生成签名，支持自定义时间戳（用于测试）
-func generateSignatureWithTimestamp(apiPath string, params map[string]any, apiSecret string, version int, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
-	if options == nil {
-		options = &SignatureOptions{}
-	}
-
-	// 获取API密钥和密钥
-	apiKey := APIKey
-	if apiSecret == "" {
-		return nil, fmt.Errorf("apiSecret is required")
-	}
-	if version <= 0 {
-		return nil, fmt.Errorf("version is required")
-	}
-	if options.Prefix != "" {
-		// 这里可以根据prefix获取不同的key，当前使用默认值
-	}
-
-	// 获取时间戳（如果提供了自定义时间戳则使用，否则使用当前时间）
-	var timestamp int64
-	if customTimestamp > 0 {
-		timestamp = customTimestamp
-	} else {
-		timestamp = time.Now().UnixMilli()
-	}
-
-	// 构建基础参数对象
-	result := &SignatureResult{
-		APIKey:    apiKey,
-		Timestamp: timestamp,
-		ChannelID: ChannelID,
-		Version:   version,
-		Params:    make(map[string]any),
-	}
-	// 添加传入的参数
-	for k, v := range params {
-		result.Params[k] = v
-	}
-
-	// 添加centerId（对应原代码逻辑）
-	if !options.NoCenterID {
-		if _, exists := result.Params["centerId"]; !exists {
-			result.CenterID = CenterID
-		}
-	}
-
-	result.OpenId = result.Params["openId"].(string)
-	// 添加tenantId
-	result.TenantID = TenantID
-
-	// 构建用于签名的参数映射
-	signParams := make(map[string]any)
-	signParams["apiKey"] = result.APIKey
-	signParams["timestamp"] = result.Timestamp
-	signParams["channelId"] = result.ChannelID
-	if result.CenterID != "" {
-		signParams["centerId"] = result.CenterID
-	}
-	if result.TenantID != "" {
-		signParams["tenantId"] = result.TenantID
-	}
-	signParams["openId"] = result.OpenId
-	signParams["version"] = result.Version
-
-	// 添加业务参数
-	for k, v := range result.Params {
-		signParams[k] = v
-	}
-
-	// 转换为键值对数组
-	var keyValues []KeyValue
-	for k, v := range signParams {
-		keyValues = append(keyValues, KeyValue{
-			Key:   k,
-			Value: fmt.Sprintf("%v", v),
-		})
-	}
-
-	// 按key排序
-	sort.Slice(keyValues, func(i, j int) bool {
-		return keyValues[i].Key < keyValues[j].Key
-	})
-
-	// 拼接参数字符串
-	var paramStr strings.Builder
-	for _, kv := range keyValues {
-		paramStr.WriteString(kv.Key)
-		paramStr.WriteString("=")
-		paramStr.WriteString(kv.Value)
-	}
-
-	// 生成待签名字符串并编码
-	signString := apiPath + paramStr.String() + apiSecret
-	encodedString := url.QueryEscape(signString)
-
-	// 替换特殊字符（严格按照原代码逻辑）
-	if strings.Contains(encodedString, "(") {
-		encodedString = strings.ReplaceAll(encodedString, "(", "%28")
-	}
-	if strings.Contains(encodedString, ")") {
-		encodedString = strings.ReplaceAll(encodedString, ")", "%29")
-	}
-	if strings.Contains(encodedString, "'") {
-		encodedString = strings.ReplaceAll(encodedString, "'", "%27")
-	}
-	if strings.Contains(encodedString, "!") {
-		encodedString = strings.ReplaceAll(encodedString, "!", "%21")
-	}
-	if strings.Contains(encodedString, "~") {
-		encodedString = strings.ReplaceAll(encodedString, "~", "%7E")
-	}
-
-	// MD5加密
-	result.Sign = md5Hash(encodedString)
-
-	return result, nil
-}
-
-// toURLParams 将签名结果转换为URL参数字符串
 func toURLParams(result *SignatureResult) string {
-	// 按照JavaScript版本的确切顺序构建参数
-	// JavaScript输出顺序：apiKey, timestamp, channelId, [业务参数], centerId, tenantId, sign
 	var params []string
 
-	// 基础参数（固定顺序）
-	params = append(params, fmt.Sprintf("apiKey=%s", url.QueryEscape(result.APIKey)))
-	params = append(params, fmt.Sprintf("timestamp=%s", url.QueryEscape(strconv.FormatInt(result.Timestamp, 10))))
-	params = append(params, fmt.Sprintf("channelId=%s", url.QueryEscape(result.ChannelID)))
+	params = append(params, "apiKey="+url.QueryEscape(result.APIKey))
+	params = append(params, "timestamp="+url.QueryEscape(strconv.FormatInt(result.Timestamp, 10)))
+	params = append(params, "channelId="+url.QueryEscape(result.ChannelID))
 
-	// 业务参数（按照JavaScript中的顺序）
-	// fieldList方法顺序：netUserId, venueId, serviceId, day, selectByfullTag, fieldType
-	// newOrder方法顺序：serviceId, day, fieldType, fieldInfo, ticket, randStr, venueId, netUserId
-
-	// 检查是否为newOrder方法（包含fieldInfo参数）
 	if _, hasFieldInfo := result.Params["fieldInfo"]; hasFieldInfo {
-		// newOrder方法的参数顺序
 		if serviceId, ok := result.Params["serviceId"]; ok {
-			params = append(params, fmt.Sprintf("serviceId=%s", url.QueryEscape(fmt.Sprintf("%v", serviceId))))
+			params = append(params, "serviceId="+url.QueryEscape(fmt.Sprintf("%v", serviceId)))
 		}
 		if day, ok := result.Params["day"]; ok {
-			params = append(params, fmt.Sprintf("day=%s", url.QueryEscape(fmt.Sprintf("%v", day))))
+			params = append(params, "day="+url.QueryEscape(fmt.Sprintf("%v", day)))
 		}
 		if fieldType, ok := result.Params["fieldType"]; ok {
-			params = append(params, fmt.Sprintf("fieldType=%s", url.QueryEscape(fmt.Sprintf("%v", fieldType))))
+			params = append(params, "fieldType="+url.QueryEscape(fmt.Sprintf("%v", fieldType)))
 		}
 		if fieldInfo, ok := result.Params["fieldInfo"]; ok {
-			params = append(params, fmt.Sprintf("fieldInfo=%s", url.QueryEscape(fmt.Sprintf("%v", fieldInfo))))
+			params = append(params, "fieldInfo="+url.QueryEscape(fmt.Sprintf("%v", fieldInfo)))
 		}
 		if ticket, ok := result.Params["ticket"]; ok {
-			params = append(params, fmt.Sprintf("ticket=%s", url.QueryEscape(fmt.Sprintf("%v", ticket))))
+			params = append(params, "ticket="+url.QueryEscape(fmt.Sprintf("%v", ticket)))
 		}
 		if randStr, ok := result.Params["randStr"]; ok {
-			params = append(params, fmt.Sprintf("randStr=%s", url.QueryEscape(fmt.Sprintf("%v", randStr))))
+			params = append(params, "randStr="+url.QueryEscape(fmt.Sprintf("%v", randStr)))
 		}
 		if venueId, ok := result.Params["venueId"]; ok {
-			params = append(params, fmt.Sprintf("venueId=%s", url.QueryEscape(fmt.Sprintf("%v", venueId))))
+			params = append(params, "venueId="+url.QueryEscape(fmt.Sprintf("%v", venueId)))
 		}
 		if netUserId, ok := result.Params["netUserId"]; ok {
-			params = append(params, fmt.Sprintf("netUserId=%s", url.QueryEscape(fmt.Sprintf("%v", netUserId))))
+			params = append(params, "netUserId="+url.QueryEscape(fmt.Sprintf("%v", netUserId)))
+		}
+		if result.CenterID != "" {
+			params = append(params, "centerId="+url.QueryEscape(result.CenterID))
+		}
+		if result.TenantID != "" {
+			params = append(params, "tenantId="+url.QueryEscape(result.TenantID))
 		}
 	} else {
-		// fieldList方法的参数顺序
 		if netUserId, ok := result.Params["netUserId"]; ok {
-			params = append(params, fmt.Sprintf("netUserId=%s", url.QueryEscape(fmt.Sprintf("%v", netUserId))))
+			params = append(params, "netUserId="+url.QueryEscape(fmt.Sprintf("%v", netUserId)))
 		}
 		if venueId, ok := result.Params["venueId"]; ok {
-			params = append(params, fmt.Sprintf("venueId=%s", url.QueryEscape(fmt.Sprintf("%v", venueId))))
+			params = append(params, "venueId="+url.QueryEscape(fmt.Sprintf("%v", venueId)))
 		}
 		if serviceId, ok := result.Params["serviceId"]; ok {
-			params = append(params, fmt.Sprintf("serviceId=%s", url.QueryEscape(fmt.Sprintf("%v", serviceId))))
+			params = append(params, "serviceId="+url.QueryEscape(fmt.Sprintf("%v", serviceId)))
 		}
 		if day, ok := result.Params["day"]; ok {
-			params = append(params, fmt.Sprintf("day=%s", url.QueryEscape(fmt.Sprintf("%v", day))))
+			params = append(params, "day="+url.QueryEscape(fmt.Sprintf("%v", day)))
 		}
 		if selectByfullTag, ok := result.Params["selectByfullTag"]; ok {
-			params = append(params, fmt.Sprintf("selectByfullTag=%s", url.QueryEscape(fmt.Sprintf("%v", selectByfullTag))))
+			params = append(params, "selectByfullTag="+url.QueryEscape(fmt.Sprintf("%v", selectByfullTag)))
 		}
 		if result.CenterID != "" {
-			params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
+			params = append(params, "centerId="+url.QueryEscape(result.CenterID))
 		}
 		if fieldType, ok := result.Params["fieldType"]; ok {
-			params = append(params, fmt.Sprintf("fieldType=%s", url.QueryEscape(fmt.Sprintf("%v", fieldType))))
+			params = append(params, "fieldType="+url.QueryEscape(fmt.Sprintf("%v", fieldType)))
 		}
 		if result.TenantID != "" {
-			params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
+			params = append(params, "tenantId="+url.QueryEscape(result.TenantID))
 		}
 	}
 
-	// 对于 newOrder，添加 centerId 和 tenantId（如果还没添加）
-	if _, hasFieldInfo := result.Params["fieldInfo"]; hasFieldInfo {
-		if result.CenterID != "" {
-			params = append(params, fmt.Sprintf("centerId=%s", url.QueryEscape(result.CenterID)))
-		}
-		if result.TenantID != "" {
-			params = append(params, fmt.Sprintf("tenantId=%s", url.QueryEscape(result.TenantID)))
-		}
-	}
-
-	params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
-	params = append(params, fmt.Sprintf("version=%d", result.Version))
-	// 最后添加签名
-	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
+	params = append(params, "openId="+url.QueryEscape(result.OpenId))
+	params = append(params, "version="+strconv.Itoa(result.Version))
+	params = append(params, "sign="+url.QueryEscape(result.Sign))
 
 	return strings.Join(params, "&")
 }
 
-// GenerateFieldListSignature 生成fieldList签名
 func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId, apiSecret string, version int) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
@@ -848,7 +569,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId, apiS
 		"openId":          openId,
 	}
 
-	result, err := generateSignature(apiPath, params, apiSecret, version, nil)
+	result, err := generateSignature(apiPath, params, apiSecret, version)
 	if err != nil {
 		return "", err
 	}
@@ -856,7 +577,6 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId, apiS
 	return toURLParams(result), nil
 }
 
-// GenerateNewOrderSignature 生成newOrder签名
 func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, openId, apiSecret string, version int) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/order/newOrder"
 	params := map[string]any{
@@ -871,7 +591,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, op
 		"openId":    openId,
 	}
 
-	result, err := generateSignature(apiPath, params, apiSecret, version, nil)
+	result, err := generateSignature(apiPath, params, apiSecret, version)
 	if err != nil {
 		return "", err
 	}
@@ -879,8 +599,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, op
 	return toURLParams(result), nil
 }
 
-// GenerateFieldListSignatureWithTimestamp 生成fieldList签名（测试用，支持固定时间戳）
-func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID, openId, apiSecret string, version int, timestamp int64) (string, error) {
+func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID, openId, apiSecret string, version int, timestamp int64, fieldType string) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
 		"netUserId":       netUserID,
@@ -888,11 +607,11 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID,
 		"serviceId":       serviceID,
 		"day":             day,
 		"selectByfullTag": "0",
-		"fieldType":       "1837",
+		"fieldType":       fieldType,
 		"openId":          openId,
 	}
 
-	result, err := generateSignatureWithTimestamp(apiPath, params, apiSecret, version, nil, timestamp)
+	result, err := generateSignatureWithTimestamp(apiPath, params, apiSecret, version, timestamp)
 	if err != nil {
 		return "", err
 	}
@@ -900,24 +619,80 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID,
 	return toURLParams(result), nil
 }
 
-// GenerateNewOrderSignatureWithTimestamp 生成newOrder签名（测试用，支持固定时间戳）
-func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID, venueID, apiSecret string, version int, timestamp int64) (string, error) {
-	apiPath := "/aisports-api/wechatAPI/order/newOrder"
-	params := map[string]any{
-		"serviceId": serviceID,
-		"day":       day,
-		"fieldType": FieldType,
-		"fieldInfo": fieldInfo,
-		"ticket":    "",
-		"randStr":   "",
-		"venueId":   venueID,
-		"netUserId": netUserID,
+func generateSignatureWithTimestamp(apiPath string, params map[string]any, apiSecret string, version int, customTimestamp int64) (*SignatureResult, error) {
+	if apiSecret == "" || version <= 0 {
+		return nil, fmt.Errorf("invalid params")
 	}
 
-	result, err := generateSignatureWithTimestamp(apiPath, params, apiSecret, version, nil, timestamp)
-	if err != nil {
-		return "", err
+	var timestamp int64
+	if customTimestamp > 0 {
+		timestamp = customTimestamp
+	} else {
+		timestamp = time.Now().UnixMilli()
 	}
 
-	return toURLParams(result), nil
+	result := &SignatureResult{
+		APIKey:    APIKey,
+		Timestamp: timestamp,
+		ChannelID: ChannelID,
+		Version:   version,
+		Params:    make(map[string]any),
+	}
+
+	for k, v := range params {
+		result.Params[k] = v
+	}
+
+	if _, exists := result.Params["centerId"]; !exists {
+		result.CenterID = CenterID
+	}
+
+	result.OpenId = result.Params["openId"].(string)
+	result.TenantID = TenantID
+
+	signParams := make(map[string]any)
+	signParams["apiKey"] = result.APIKey
+	signParams["timestamp"] = result.Timestamp
+	signParams["channelId"] = result.ChannelID
+	if result.CenterID != "" {
+		signParams["centerId"] = result.CenterID
+	}
+	if result.TenantID != "" {
+		signParams["tenantId"] = result.TenantID
+	}
+	signParams["openId"] = result.OpenId
+	signParams["version"] = result.Version
+
+	for k, v := range result.Params {
+		signParams[k] = v
+	}
+
+	var keyValues []KeyValue
+	for k, v := range signParams {
+		keyValues = append(keyValues, KeyValue{Key: k, Value: fmt.Sprintf("%v", v)})
+	}
+
+	sort.Slice(keyValues, func(i, j int) bool {
+		return keyValues[i].Key < keyValues[j].Key
+	})
+
+	var paramStr strings.Builder
+	for _, kv := range keyValues {
+		paramStr.WriteString(kv.Key)
+		paramStr.WriteString("=")
+		paramStr.WriteString(kv.Value)
+	}
+
+	signString := apiPath + paramStr.String() + apiSecret
+	encodedString := url.QueryEscape(signString)
+
+	encodedString = strings.ReplaceAll(encodedString, "(", "%28")
+	encodedString = strings.ReplaceAll(encodedString, ")", "%29")
+	encodedString = strings.ReplaceAll(encodedString, "'", "%27")
+	encodedString = strings.ReplaceAll(encodedString, "!", "%21")
+	encodedString = strings.ReplaceAll(encodedString, "~", "%7E")
+
+	result.Sign = md5Hash(encodedString)
+
+	return result, nil
 }
