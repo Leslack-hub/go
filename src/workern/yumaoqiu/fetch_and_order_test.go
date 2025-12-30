@@ -9,6 +9,8 @@ func TestGenerateFieldListSignatureWithTimestamp_KnownSample(t *testing.T) {
 		"5003000103",
 		"1002",
 		"o_9oO5UjYM1frKP537iCEGv0JID4",
+		"0gDFZNGBdobPSQjIUbp/NA==",
+		9,
 		1767100063371,
 	)
 	if err != nil {

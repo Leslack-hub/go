@@ -134,13 +134,15 @@ func main() {
 	flag.StringVar(&ExecDay, "day", "", "天数格式： 20250901")
 	flag.StringVar(&NetUserId, "net_user_id", "", "账号")
 	flag.StringVar(&OpenId, "open_id", "", "openId")
+	flag.StringVar(&APISecret, "api_secret", "", "API密钥")
+	flag.IntVar(&APIVersion, "version", 0, "签名版本")
 	flag.StringVar(&times, "times", "5", "执行次数")
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&Location, "location", "", "位置（1-10）")
 	flag.StringVar(&VenueIdIndex, "venue_id_index", "", "场馆")
 	flag.Int64Var(&SuccessExitCount, "ok_count", 1, "收到多少次成功响应后退出")
 	flag.Parse()
-	if ExecDay == "" || NetUserId == "" || Location == "" {
+	if ExecDay == "" || NetUserId == "" || Location == "" || APISecret == "" || APIVersion <= 0 {
 		showUsage()
 		os.Exit(1)
 	}
@@ -497,7 +499,7 @@ func processFieldList(response *APIResponse) error {
 				log.Printf("场地 %d: 提取到时段ID: %s\n", idx+1, fieldSegmentIDs)
 
 				// 生成签名
-				signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId)
+				signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId, APISecret, APIVersion)
 				if err != nil {
 					log.Printf("生成newOrder签名失败: %v", err)
 					return
@@ -521,7 +523,7 @@ func processFieldList(response *APIResponse) error {
 
 // 优化：使用原生 HTTP 客户端获取场地列表
 func fetchFieldListWithHTTP() ([]byte, error) {
-	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002", OpenId)
+	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002", OpenId, APISecret, APIVersion)
 	if err != nil {
 		return nil, fmt.Errorf("生成签名失败: %v", err)
 	}
@@ -598,15 +600,17 @@ type Response struct {
 // 配置常量
 const (
 	APIKey    = "e98ce2565b09ecc0"
-	APISecret = "0gDFZNGBdobPSQjIUbp/NA=="
 	CenterID  = "50030001"
 	TenantID  = "82"
 	ChannelID = "11"
 )
 
-var VenueId string
-
-var FieldType string
+var (
+	VenueId    string
+	FieldType  string
+	APISecret  string
+	APIVersion int
+)
 
 // KeyValue 键值对结构
 type KeyValue struct {
@@ -628,6 +632,7 @@ type SignatureResult struct {
 	CenterID  string `json:"centerId,omitempty"`
 	TenantID  string `json:"tenantId,omitempty"`
 	OpenId    string `json:"openId,omitempty"`
+	Version   int    `json:"version"`
 	Sign      string `json:"sign"`
 	// 动态参数
 	Params map[string]interface{} `json:"-"`
@@ -641,19 +646,24 @@ func md5Hash(str string) string {
 }
 
 // generateSignature 根据原始JavaScript代码逆向的签名生成函数
-func generateSignature(apiPath string, params map[string]any, options *SignatureOptions) (*SignatureResult, error) {
-	return generateSignatureWithTimestamp(apiPath, params, options, 0)
+func generateSignature(apiPath string, params map[string]any, apiSecret string, version int, options *SignatureOptions) (*SignatureResult, error) {
+	return generateSignatureWithTimestamp(apiPath, params, apiSecret, version, options, 0)
 }
 
 // generateSignatureWithTimestamp 生成签名，支持自定义时间戳（用于测试）
-func generateSignatureWithTimestamp(apiPath string, params map[string]any, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
+func generateSignatureWithTimestamp(apiPath string, params map[string]any, apiSecret string, version int, options *SignatureOptions, customTimestamp int64) (*SignatureResult, error) {
 	if options == nil {
 		options = &SignatureOptions{}
 	}
 
 	// 获取API密钥和密钥
 	apiKey := APIKey
-	apiSecret := APISecret
+	if apiSecret == "" {
+		return nil, fmt.Errorf("apiSecret is required")
+	}
+	if version <= 0 {
+		return nil, fmt.Errorf("version is required")
+	}
 	if options.Prefix != "" {
 		// 这里可以根据prefix获取不同的key，当前使用默认值
 	}
@@ -671,6 +681,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 		APIKey:    apiKey,
 		Timestamp: timestamp,
 		ChannelID: ChannelID,
+		Version:   version,
 		Params:    make(map[string]any),
 	}
 	// 添加传入的参数
@@ -703,7 +714,7 @@ func generateSignatureWithTimestamp(apiPath string, params map[string]any, optio
 	if result.OpenId != "" {
 		signParams["openId"] = result.OpenId
 	}
-	signParams["version"] = 9
+	signParams["version"] = result.Version
 
 	// 添加业务参数
 	for k, v := range result.Params {
@@ -842,7 +853,7 @@ func toURLParams(result *SignatureResult) string {
 	if result.OpenId != "" {
 		params = append(params, fmt.Sprintf("openId=%s", url.QueryEscape(result.OpenId)))
 	}
-	params = append(params, fmt.Sprintf("version=%d", 9))
+	params = append(params, fmt.Sprintf("version=%d", result.Version))
 	// 最后添加签名
 	params = append(params, fmt.Sprintf("sign=%s", url.QueryEscape(result.Sign)))
 
@@ -850,7 +861,7 @@ func toURLParams(result *SignatureResult) string {
 }
 
 // GenerateFieldListSignature 生成fieldList签名
-func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId string) (string, error) {
+func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId, apiSecret string, version int) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
 		"netUserId":       netUserID,
@@ -862,7 +873,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId strin
 		"openId":          openId,
 	}
 
-	result, err := generateSignature(apiPath, params, nil)
+	result, err := generateSignature(apiPath, params, apiSecret, version, nil)
 	if err != nil {
 		return "", err
 	}
@@ -871,7 +882,7 @@ func GenerateFieldListSignature(day, netUserID, venueID, serviceID, openId strin
 }
 
 // GenerateNewOrderSignature 生成newOrder签名
-func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, openId string) (string, error) {
+func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, openId, apiSecret string, version int) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/order/newOrder"
 	params := map[string]any{
 		"serviceId": serviceID,
@@ -885,7 +896,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, op
 		"openId":    openId,
 	}
 
-	result, err := generateSignature(apiPath, params, nil)
+	result, err := generateSignature(apiPath, params, apiSecret, version, nil)
 	if err != nil {
 		return "", err
 	}
@@ -894,7 +905,7 @@ func GenerateNewOrderSignature(day, fieldInfo, netUserID, serviceID, venueID, op
 }
 
 // GenerateFieldListSignatureWithTimestamp 生成fieldList签名（测试用，支持固定时间戳）
-func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID, openId string, timestamp int64) (string, error) {
+func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID, openId, apiSecret string, version int, timestamp int64) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/venue/fieldList"
 	params := map[string]any{
 		"netUserId":       netUserID,
@@ -906,7 +917,7 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID,
 		"openId":          openId,
 	}
 
-	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
+	result, err := generateSignatureWithTimestamp(apiPath, params, apiSecret, version, nil, timestamp)
 	if err != nil {
 		return "", err
 	}
@@ -915,7 +926,7 @@ func GenerateFieldListSignatureWithTimestamp(day, netUserID, venueID, serviceID,
 }
 
 // GenerateNewOrderSignatureWithTimestamp 生成newOrder签名（测试用，支持固定时间戳）
-func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID, venueID string, timestamp int64) (string, error) {
+func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID, venueID, apiSecret string, version int, timestamp int64) (string, error) {
 	apiPath := "/aisports-api/wechatAPI/order/newOrder"
 	params := map[string]any{
 		"serviceId": serviceID,
@@ -928,7 +939,7 @@ func GenerateNewOrderSignatureWithTimestamp(day, fieldInfo, netUserID, serviceID
 		"netUserId": netUserID,
 	}
 
-	result, err := generateSignatureWithTimestamp(apiPath, params, nil, timestamp)
+	result, err := generateSignatureWithTimestamp(apiPath, params, apiSecret, version, nil, timestamp)
 	if err != nil {
 		return "", err
 	}
