@@ -132,16 +132,19 @@ func executeOrder(orderReq OrderRequest) {
 
 	setRequestHeaders(req)
 
-	resp, err := HttpClient.Do(req)
+	var resp *http.Response
+	resp, err = HttpClient.Do(req)
 	if err != nil {
 		return
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	var body []byte
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return
 	}
+
+	_ = resp.Body.Close()
 
 	checkOrderResponse(body)
 }
@@ -590,6 +593,7 @@ func main() {
 		NetUserId == "" ||
 		Location == "" ||
 		APISecret == "" ||
+		OpenId == "" ||
 		APIVersion <= 0 {
 		flag.Usage()
 		os.Exit(1)
@@ -660,7 +664,7 @@ func main() {
 	}
 
 	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
-
+	var data []byte
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
 		case <-GCtx.Done():
@@ -672,8 +676,9 @@ func main() {
 			break
 		}
 
-		data, err := fetchFieldListWithHTTP()
+		data, err = fetchFieldListWithHTTP()
 		if err != nil {
+			log.Println("[fieldList] error", err)
 			time.Sleep(RetryDelay)
 			continue
 		}
@@ -683,7 +688,6 @@ func main() {
 			time.Sleep(RetryDelay)
 			continue
 		}
-
 		if len(response.FieldList) > 0 {
 			processFieldList(&response)
 		} else {
@@ -694,5 +698,5 @@ func main() {
 End:
 	WorkerChanWg.Wait()
 	close(WorkerChan)
-	log.Printf("执行完成，成功次数: %d\n", atomic.LoadInt64(&GlobalSuccessCount))
+	log.Printf("执行完成，成功次数: %d, %s\n", atomic.LoadInt64(&GlobalSuccessCount), string(data))
 }
