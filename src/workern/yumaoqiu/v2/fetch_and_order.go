@@ -135,6 +135,7 @@ func executeOrder(orderReq OrderRequest) {
 	var resp *http.Response
 	resp, err = HttpClient.Do(req)
 	if err != nil {
+		log.Println("request failure", err.Error())
 		return
 	}
 
