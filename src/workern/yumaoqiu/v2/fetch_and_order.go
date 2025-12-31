@@ -368,8 +368,14 @@ func toURLParams(result *SignatureResult) string {
 	params = append(params, "channelId="+url.QueryEscape(result.ChannelID))
 
 	if _, hasFieldInfo := result.Params["fieldInfo"]; hasFieldInfo {
+		if venueId, ok := result.Params["venueId"]; ok {
+			params = append(params, "venueId="+url.QueryEscape(fmt.Sprintf("%v", venueId)))
+		}
 		if serviceId, ok := result.Params["serviceId"]; ok {
 			params = append(params, "serviceId="+url.QueryEscape(fmt.Sprintf("%v", serviceId)))
+		}
+		if result.CenterID != "" {
+			params = append(params, "centerId="+url.QueryEscape(result.CenterID))
 		}
 		if day, ok := result.Params["day"]; ok {
 			params = append(params, "day="+url.QueryEscape(fmt.Sprintf("%v", day)))
@@ -386,14 +392,8 @@ func toURLParams(result *SignatureResult) string {
 		if randStr, ok := result.Params["randStr"]; ok {
 			params = append(params, "randStr="+url.QueryEscape(fmt.Sprintf("%v", randStr)))
 		}
-		if venueId, ok := result.Params["venueId"]; ok {
-			params = append(params, "venueId="+url.QueryEscape(fmt.Sprintf("%v", venueId)))
-		}
 		if netUserId, ok := result.Params["netUserId"]; ok {
 			params = append(params, "netUserId="+url.QueryEscape(fmt.Sprintf("%v", netUserId)))
-		}
-		if result.CenterID != "" {
-			params = append(params, "centerId="+url.QueryEscape(result.CenterID))
 		}
 		if result.TenantID != "" {
 			params = append(params, "tenantId="+url.QueryEscape(result.TenantID))
