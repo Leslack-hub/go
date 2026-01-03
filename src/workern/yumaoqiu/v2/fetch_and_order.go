@@ -666,6 +666,14 @@ func main() {
 
 	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
 	var data []byte
+	var lastData []byte
+	shouldExit := func() bool {
+		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+			GCancel()
+			return true
+		}
+		return false
+	}
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
 		case <-GCtx.Done():
@@ -673,25 +681,38 @@ func main() {
 		default:
 		}
 
-		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
-			break
+		if shouldExit() {
+			goto End
 		}
 
 		data, err = fetchFieldListWithHTTP()
 		if err != nil {
+			if shouldExit() {
+				goto End
+			}
 			log.Println("[fieldList] error", err)
 			time.Sleep(RetryDelay)
 			continue
 		}
+		lastData = data
 
 		var response APIResponse
 		if err = json.Unmarshal(data, &response); err != nil {
+			if shouldExit() {
+				goto End
+			}
 			time.Sleep(RetryDelay)
 			continue
 		}
 		if len(response.FieldList) > 0 {
 			processFieldList(&response)
+			if shouldExit() {
+				goto End
+			}
 		} else {
+			if shouldExit() {
+				goto End
+			}
 			time.Sleep(RetryDelay)
 		}
 	}
@@ -699,5 +720,5 @@ func main() {
 End:
 	WorkerChanWg.Wait()
 	close(WorkerChan)
-	log.Printf("执行完成，成功次数: %d, %s\n", atomic.LoadInt64(&GlobalSuccessCount), string(data))
+	log.Printf("执行完成，成功次数: %d, %s\n", atomic.LoadInt64(&GlobalSuccessCount), string(lastData))
 }
