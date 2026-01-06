@@ -26,9 +26,9 @@ const (
 	// 减少重试延迟
 	RetryDelay = 5 * time.Millisecond
 	// 并发 worker 数量
-	NumWorkers = 16
+	NumWorkers = 8
 	// 预热提前时间（毫秒）
-	WarmupAdvanceMs = 50
+	WarmupAdvanceMs = 500
 )
 
 type FieldSegment struct {
