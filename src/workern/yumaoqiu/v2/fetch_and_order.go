@@ -343,14 +343,16 @@ func fetchFieldListWithHTTP() ([]byte, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
+	var req *http.Request
+	req, err = http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	setRequestHeaders(req)
 
-	resp, err := HttpClient.Do(req)
+	var resp *http.Response
+	resp, err = HttpClient.Do(req)
 	if err != nil {
 		log.Println(err.Error())
 		return nil, err
@@ -748,7 +750,7 @@ func main() {
 
 				var response APIResponse
 				if jsonErr := json.Unmarshal(data, &response); jsonErr != nil {
-					log.Printf("[worker-%d] 解析失败: %v", workerID, jsonErr)
+					log.Printf("[worker-%d] 解析失败: %v, %s", workerID, jsonErr, string(data))
 					return
 				}
 
