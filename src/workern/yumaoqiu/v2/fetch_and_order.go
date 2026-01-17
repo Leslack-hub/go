@@ -23,9 +23,7 @@ import (
 )
 
 const (
-	// 并发 worker 数量
-	NumWorkers = 4
-	// 预热提前时间（毫秒）
+	NumWorkers      = 4
 	WarmupAdvanceMs = 500
 )
 
@@ -68,12 +66,10 @@ var (
 	SignatureCacheTTL    = 10 * time.Second
 )
 
-// OrderRequest 用于传递下单请求信息
 type OrderRequest struct {
 	URL string
 }
 
-// 创建高性能 HTTP 客户端
 func createHTTPClient() *http.Client {
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -98,14 +94,21 @@ func createHTTPClient() *http.Client {
 	}
 }
 
-// 预热连接
 func warmupConnection() {
-	req, _ := http.NewRequest("HEAD", "https://web.xports.cn/", nil)
-	req.Header.Set("Connection", "keep-alive")
-	resp, err := HttpClient.Do(req)
-	if err == nil {
-		resp.Body.Close()
+	var wg sync.WaitGroup
+	for i := 0; i < NumWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest("HEAD", "https://web.xports.cn/", nil)
+			req.Header.Set("Connection", "keep-alive")
+			resp, err := HttpClient.Do(req)
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 func orderWorker() {
@@ -136,17 +139,42 @@ func executeOrder(orderReq OrderRequest) {
 	var resp *http.Response
 	resp, err = HttpClient.Do(req)
 	if err != nil {
-		log.Println("request failure", err.Error())
 		return
 	}
 
 	var body []byte
 	body, err = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
 	if err != nil {
 		return
 	}
 
+	checkOrderResponse(body)
+}
+
+func executeOrderDirect(orderURL string) {
+	if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+		return
+	}
+
+	req, err := http.NewRequestWithContext(GCtx, "GET", orderURL, nil)
+	if err != nil {
+		return
+	}
+
+	setRequestHeaders(req)
+
+	var resp *http.Response
+	resp, err = HttpClient.Do(req)
+	if err != nil {
+		return
+	}
+	var body []byte
+	body, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	if err != nil {
+		return
+	}
 
 	checkOrderResponse(body)
 }
@@ -211,7 +239,6 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 		return idx >= 0 && idx < len(segmentList)
 	}
 
-	// 找连续两张
 	for offset := 0; offset < len(segmentList); offset++ {
 		startLeft := center - offset
 		if withinBounds(startLeft) && withinBounds(startLeft+1) {
@@ -232,7 +259,6 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 		}
 	}
 
-	// 取最多两张
 	var ids []string
 	seen := make(map[int]struct{})
 	for step := 0; step < len(segmentList) && len(ids) < 2; step++ {
@@ -264,32 +290,24 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 }
 
 func processFieldList(response *APIResponse) {
-	wg := sync.WaitGroup{}
-	for i, field := range response.FieldList {
-		wg.Add(1)
-		go func(idx int, f *Field) {
-			defer wg.Done()
+	for _, field := range response.FieldList {
+		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
+			return
+		}
 
-			fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(Location, ","), f.FieldSegmentList)
-			if fieldSegmentIDs == "" {
-				return
-			}
+		fieldSegmentIDs := extractFieldSegmentIDs(strings.Split(Location, ","), field.FieldSegmentList)
+		if fieldSegmentIDs == "" {
+			continue
+		}
 
-			signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId, APISecret, APIVersion)
-			if err != nil {
-				return
-			}
-			orderURL := "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?" + signatureParams
+		signatureParams, err := GenerateNewOrderSignature(ExecDay, fieldSegmentIDs, NetUserId, "1002", VenueId, OpenId, APISecret, APIVersion)
+		if err != nil {
+			continue
+		}
+		orderURL := "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?" + signatureParams
 
-			WorkerChanWg.Add(1)
-			select {
-			case WorkerChan <- OrderRequest{URL: orderURL}:
-			case <-GCtx.Done():
-				WorkerChanWg.Done()
-			}
-		}(i, field)
+		go executeOrderDirect(orderURL)
 	}
-	wg.Wait()
 }
 
 func getFieldListURL() (string, error) {
@@ -345,7 +363,6 @@ type Response struct {
 	Message string `json:"message"`
 }
 
-// 配置常量
 const (
 	APIKey    = "e98ce2565b09ecc0"
 	CenterID  = "50030001"
@@ -650,24 +667,22 @@ func main() {
 		time.Local = shanghaiLoc
 	}
 
-	// 初始化 HTTP 客户端
 	HttpClient = createHTTPClient()
 
 	GCtx, GCancel = context.WithCancel(context.Background())
 	defer GCancel()
 
-	// 初始化 worker
 	WorkerChan = make(chan OrderRequest, 500)
 	WorkerChanWg = &sync.WaitGroup{}
 	for range NumWorkers {
 		go orderWorker()
 	}
 
-	// 预热连接
 	warmupConnection()
 
 	if startAt != "" {
-		start, err := time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
+		var start time.Time
+		start, err = time.ParseInLocation(time.DateTime, startAt, shanghaiLoc)
 		if err != nil {
 			log.Println("时间格式错误")
 			return
