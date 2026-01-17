@@ -337,14 +337,14 @@ func getFieldListURL() (string, error) {
 	return cachedFieldListURL, nil
 }
 
-func fetchFieldListWithHTTP() ([]byte, error) {
+func fetchFieldListWithHTTPContext(ctx context.Context) ([]byte, error) {
 	requestURL, err := getFieldListURL()
 	if err != nil {
 		return nil, err
 	}
 
 	var req *http.Request
-	req, err = http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
+	req, err = http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +354,6 @@ func fetchFieldListWithHTTP() ([]byte, error) {
 	var resp *http.Response
 	resp, err = HttpClient.Do(req)
 	if err != nil {
-		log.Println(err.Error())
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -737,14 +736,17 @@ func main() {
 		}
 
 		atomic.StoreInt32(&listFetched, 0)
+		fetchCtx, fetchCancel := context.WithCancel(GCtx)
 		var fetchWg sync.WaitGroup
 		for i := 0; i < NumWorkers; i++ {
 			fetchWg.Add(1)
 			go func(workerID int) {
 				defer fetchWg.Done()
-				data, fetchErr := fetchFieldListWithHTTP()
+				data, fetchErr := fetchFieldListWithHTTPContext(fetchCtx)
 				if fetchErr != nil {
-					log.Printf("[worker-%d] 拉取失败: %v", workerID, fetchErr)
+					if fetchCtx.Err() == nil {
+						log.Printf("[worker-%d] 拉取失败: %v", workerID, fetchErr)
+					}
 					return
 				}
 
@@ -756,7 +758,8 @@ func main() {
 
 				if len(response.FieldList) > 0 {
 					if atomic.CompareAndSwapInt32(&listFetched, 0, 1) {
-						log.Printf("[worker-%d] 成功拉取到列表！", workerID)
+						log.Printf("[worker-%d] 成功拉取到列表！通知其他请求取消", workerID)
+						fetchCancel()
 						select {
 						case resultChan <- &response:
 						default:
@@ -776,15 +779,18 @@ func main() {
 
 		select {
 		case response := <-resultChan:
+			fetchCancel() // 确保取消
 			processFieldList(response)
 			if shouldExit() {
 				goto End
 			}
 		case <-done:
+			fetchCancel() // 确保取消
 			if shouldExit() {
 				goto End
 			}
 		case <-GCtx.Done():
+			fetchCancel() // 确保取消
 			goto End
 		}
 	}
