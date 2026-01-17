@@ -23,10 +23,8 @@ import (
 )
 
 const (
-	// 减少重试延迟
-	RetryDelay = 5 * time.Millisecond
 	// 并发 worker 数量
-	NumWorkers = 8
+	NumWorkers = 4
 	// 预热提前时间（毫秒）
 	WarmupAdvanceMs = 500
 )
@@ -51,20 +49,23 @@ type APIResponse struct {
 }
 
 var (
-	WorkerChan       chan OrderRequest
-	WorkerChanWg     *sync.WaitGroup
-	GCtx             context.Context
-	GCancel          context.CancelFunc
-	ExecDay          string
-	Location         string
-	NetUserId        string
-	OpenId           string
-	VenueIdIndex     string
-	SuccessExitCount int64
-	// 全局 HTTP 客户端
-	HttpClient *http.Client
-	// 成功计数器
-	GlobalSuccessCount int64
+	WorkerChan           chan OrderRequest
+	WorkerChanWg         *sync.WaitGroup
+	GCtx                 context.Context
+	GCancel              context.CancelFunc
+	ExecDay              string
+	Location             string
+	NetUserId            string
+	OpenId               string
+	VenueIdIndex         string
+	SuccessExitCount     int64
+	HttpClient           *http.Client
+	GlobalSuccessCount   int64
+	listFetched          int32
+	cachedFieldListURL   string
+	cachedFieldListMutex sync.RWMutex
+	cachedFieldListTime  time.Time
+	SignatureCacheTTL    = 10 * time.Second
 )
 
 // OrderRequest 用于传递下单请求信息
@@ -291,13 +292,38 @@ func processFieldList(response *APIResponse) {
 	wg.Wait()
 }
 
-func fetchFieldListWithHTTP() ([]byte, error) {
+func getFieldListURL() (string, error) {
+	cachedFieldListMutex.RLock()
+	if cachedFieldListURL != "" && time.Since(cachedFieldListTime) < SignatureCacheTTL {
+		urlPath := cachedFieldListURL
+		cachedFieldListMutex.RUnlock()
+		return urlPath, nil
+	}
+	cachedFieldListMutex.RUnlock()
+
+	cachedFieldListMutex.Lock()
+	defer cachedFieldListMutex.Unlock()
+
+	if cachedFieldListURL != "" && time.Since(cachedFieldListTime) < SignatureCacheTTL {
+		return cachedFieldListURL, nil
+	}
+
 	signatureParams, err := GenerateFieldListSignature(ExecDay, NetUserId, VenueId, "1002", OpenId, APISecret, APIVersion)
+	if err != nil {
+		return "", err
+	}
+
+	cachedFieldListURL = "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?" + signatureParams
+	cachedFieldListTime = time.Now()
+	log.Printf("[签名缓存] 已刷新签名，有效期 %v", SignatureCacheTTL)
+	return cachedFieldListURL, nil
+}
+
+func fetchFieldListWithHTTP() ([]byte, error) {
+	requestURL, err := getFieldListURL()
 	if err != nil {
 		return nil, err
 	}
-
-	requestURL := "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?" + signatureParams
 
 	req, err := http.NewRequestWithContext(GCtx, "GET", requestURL, nil)
 	if err != nil {
@@ -664,8 +690,12 @@ func main() {
 		}
 	}
 
-	log.Printf("开始执行，最大尝试次数: %d\n", maxAttempts)
-	var data []byte
+	log.Printf("开始执行，最大尝试次数: %d，并发拉取worker: %d\n", maxAttempts, NumWorkers)
+
+	if _, err = getFieldListURL(); err != nil {
+		log.Printf("预生成签名失败: %v", err)
+	}
+
 	var lastData []byte
 	shouldExit := func() bool {
 		if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
@@ -674,6 +704,9 @@ func main() {
 		}
 		return false
 	}
+
+	resultChan := make(chan *APIResponse, NumWorkers)
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
 		case <-GCtx.Done():
@@ -685,35 +718,47 @@ func main() {
 			goto End
 		}
 
-		data, err = fetchFieldListWithHTTP()
-		if err != nil {
-			if shouldExit() {
-				goto End
-			}
-			log.Println("[fieldList] error", err)
-			time.Sleep(RetryDelay)
-			continue
-		}
-		lastData = data
+		atomic.StoreInt32(&listFetched, 0)
+		for i := 0; i < NumWorkers; i++ {
+			go func(workerID int) {
+				data, fetchErr := fetchFieldListWithHTTP()
+				if fetchErr != nil {
+					log.Printf("[worker-%d] 拉取失败: %v", workerID, fetchErr)
+					return
+				}
 
-		var response APIResponse
-		if err = json.Unmarshal(data, &response); err != nil {
-			if shouldExit() {
-				goto End
-			}
-			time.Sleep(RetryDelay)
-			continue
+				var response APIResponse
+				if jsonErr := json.Unmarshal(data, &response); jsonErr != nil {
+					log.Printf("[worker-%d] 解析失败: %v", workerID, jsonErr)
+					return
+				}
+
+				if len(response.FieldList) > 0 {
+					if atomic.CompareAndSwapInt32(&listFetched, 0, 1) {
+						log.Printf("[worker-%d] 成功拉取到列表！", workerID)
+						select {
+						case resultChan <- &response:
+						default:
+						}
+					}
+				} else {
+					log.Printf("[worker-%d] 列表为空（8点前）", workerID)
+				}
+			}(i)
 		}
-		if len(response.FieldList) > 0 {
-			processFieldList(&response)
+
+		select {
+		case response := <-resultChan:
+			processFieldList(response)
 			if shouldExit() {
 				goto End
 			}
-		} else {
+		case <-time.After(50 * time.Millisecond):
 			if shouldExit() {
 				goto End
 			}
-			time.Sleep(RetryDelay)
+		case <-GCtx.Done():
+			goto End
 		}
 	}
 
