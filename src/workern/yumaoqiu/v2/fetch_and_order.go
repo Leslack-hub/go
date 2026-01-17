@@ -352,6 +352,7 @@ func fetchFieldListWithHTTP() ([]byte, error) {
 
 	resp, err := HttpClient.Do(req)
 	if err != nil {
+		log.Println(err.Error())
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -734,8 +735,11 @@ func main() {
 		}
 
 		atomic.StoreInt32(&listFetched, 0)
+		var fetchWg sync.WaitGroup
 		for i := 0; i < NumWorkers; i++ {
+			fetchWg.Add(1)
 			go func(workerID int) {
+				defer fetchWg.Done()
 				data, fetchErr := fetchFieldListWithHTTP()
 				if fetchErr != nil {
 					log.Printf("[worker-%d] 拉取失败: %v", workerID, fetchErr)
@@ -762,13 +766,19 @@ func main() {
 			}(i)
 		}
 
+		done := make(chan struct{})
+		go func() {
+			fetchWg.Wait()
+			close(done)
+		}()
+
 		select {
 		case response := <-resultChan:
 			processFieldList(response)
 			if shouldExit() {
 				goto End
 			}
-		case <-time.After(50 * time.Millisecond):
+		case <-done:
 			if shouldExit() {
 				goto End
 			}
