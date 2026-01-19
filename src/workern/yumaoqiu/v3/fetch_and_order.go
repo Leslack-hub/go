@@ -20,6 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -40,17 +42,15 @@ var (
 	successExitCount int64
 	apiSecret        string
 	apiVersion       int
+	venueId          string
+	fieldType        string
 
-	venueId   string
-	fieldType string
-
-	httpClient *http.Client
-	gCtx       context.Context
-	gCancel    context.CancelFunc
-
-	globalSuccessCount int64
-
+	httpClient              *http.Client
+	gCtx                    context.Context
+	gCancel                 context.CancelFunc
+	globalSuccessCount      int64
 	precomputedFieldListURL string
+	rateLimiter             *rate.Limiter
 )
 
 type FieldSegment struct {
@@ -291,6 +291,10 @@ func processFieldList(response *APIResponse, timestamp int64) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			if err := rateLimiter.Wait(gCtx); err != nil {
+				log.Printf("速率限制等待失败: %v", err)
+				return
+			}
 			orderURL := buildNewOrderURL(fieldInfo, timestamp)
 			executeOrder(gCtx, orderURL)
 		}()
@@ -344,8 +348,8 @@ func main() {
 	gCtx, gCancel = context.WithCancel(context.Background())
 	defer gCancel()
 
+	rateLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 1)
 	warmupConnection()
-
 	if startAt != "" {
 		start, err := time.ParseInLocation(time.DateTime, startAt, time.Local)
 		if err != nil {
