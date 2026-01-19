@@ -189,7 +189,7 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 	}
 	available := make(map[int]string)
 	for i, segment := range segmentList {
-		if segment.State == "0" && segment.Price == 5000 && segment.FieldSegmentID != "" {
+		if segment.State == "0" && segment.Price == 0 && segment.FieldSegmentID != "" {
 			available[i] = segment.FieldSegmentID
 		}
 	}
