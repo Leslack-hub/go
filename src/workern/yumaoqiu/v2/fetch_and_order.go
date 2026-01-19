@@ -152,33 +152,6 @@ func executeOrder(orderReq OrderRequest) {
 	checkOrderResponse(body)
 }
 
-func executeOrderDirect(orderURL string) {
-	if atomic.LoadInt64(&GlobalSuccessCount) >= SuccessExitCount {
-		return
-	}
-
-	req, err := http.NewRequestWithContext(GCtx, "GET", orderURL, nil)
-	if err != nil {
-		return
-	}
-
-	setRequestHeaders(req)
-
-	var resp *http.Response
-	resp, err = HttpClient.Do(req)
-	if err != nil {
-		return
-	}
-	var body []byte
-	body, err = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		return
-	}
-
-	checkOrderResponse(body)
-}
-
 func setRequestHeaders(req *http.Request) {
 	req.Header.Set("Host", "web.xports.cn")
 	req.Header.Set("Connection", "keep-alive")
@@ -216,7 +189,7 @@ func extractFieldSegmentIDs(locations []string, segmentList []*FieldSegment) str
 	}
 	available := make(map[int]string)
 	for i, segment := range segmentList {
-		if segment.State == "0" && segment.Price == 0 && segment.FieldSegmentID != "" {
+		if segment.State == "0" && segment.Price == 5000 && segment.FieldSegmentID != "" {
 			available[i] = segment.FieldSegmentID
 		}
 	}
@@ -306,7 +279,8 @@ func processFieldList(response *APIResponse) {
 		}
 		orderURL := "https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?" + signatureParams
 
-		go executeOrderDirect(orderURL)
+		WorkerChanWg.Add(1)
+		WorkerChan <- OrderRequest{URL: orderURL}
 	}
 }
 
