@@ -286,7 +286,6 @@ func findBestIndices(targetIdx int, segmentList []*FieldSegment) []int {
 			return []int{idx}
 		}
 
-		// 向后找
 		idx = targetIdx + offset
 		if idx < n && segmentList[idx].State == "0" {
 			debugLog("[查找] 找到单个位置: %d (向后偏移%d)", idx, offset)
