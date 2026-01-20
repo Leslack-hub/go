@@ -348,7 +348,7 @@ func main() {
 	gCtx, gCancel = context.WithCancel(context.Background())
 	defer gCancel()
 
-	rateLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 1)
+	rateLimiter = rate.NewLimiter(rate.Every(290*time.Millisecond), 1)
 	warmupConnection()
 	if startAt != "" {
 		start, err := time.ParseInLocation(time.DateTime, startAt, time.Local)
