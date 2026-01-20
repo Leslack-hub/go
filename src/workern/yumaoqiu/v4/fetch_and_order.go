@@ -32,7 +32,7 @@ const (
 
 	WarmupAdvanceMs  = 500
 	DNSWarmupAdvance = 2 * time.Second
-	MaxIndexOffset   = 5 // 最大索引偏移量
+	MaxIndexOffset   = 3 // 最大索引偏移量
 )
 
 var (
