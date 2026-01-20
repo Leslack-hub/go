@@ -30,8 +30,9 @@ const (
 	TenantID  = "82"
 	ChannelID = "11"
 
-	WarmupAdvanceMs = 500
-	MaxIndexOffset  = 5 // 最大索引偏移量
+	WarmupAdvanceMs  = 500
+	DNSWarmupAdvance = 2 * time.Second
+	MaxIndexOffset   = 5 // 最大索引偏移量
 )
 
 var (
@@ -53,6 +54,9 @@ var (
 	globalSuccessCount      int64
 	precomputedFieldListURL string
 	rateLimiter             *rate.Limiter
+	dnsIPs                  []string
+	dnsIPIndex              uint32
+	dnsIPMu                 sync.RWMutex
 )
 
 // debugLog 仅在 debug 模式下输出日志
@@ -78,19 +82,35 @@ type APIResponse struct {
 }
 
 func createHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   2 * time.Second,
+		KeepAlive: 60 * time.Second,
+	}
+
 	return &http.Client{
 		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   2 * time.Second,
-				KeepAlive: 60 * time.Second,
-			}).DialContext,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				ip := pickDNSIP()
+				if ip == "" {
+					return dialer.DialContext(ctx, network, address)
+				}
+
+				host, port, err := net.SplitHostPort(address)
+				if err != nil {
+					return dialer.DialContext(ctx, network, address)
+				}
+				if host != "web.xports.cn" {
+					return dialer.DialContext(ctx, network, address)
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+			},
 			MaxIdleConns:          100,
 			MaxIdleConnsPerHost:   50,
 			MaxConnsPerHost:       50,
 			IdleConnTimeout:       120 * time.Second,
 			DisableCompression:    true,
 			ForceAttemptHTTP2:     true,
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: false},
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: false, ServerName: "web.xports.cn"},
 			TLSHandshakeTimeout:   2 * time.Second,
 			ResponseHeaderTimeout: 3 * time.Second,
 		},
@@ -190,6 +210,49 @@ func buildNewOrderURL(fieldInfo string, timestamp int64) string {
 		"https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?apiKey=%s&timestamp=%d&channelId=%s&venueId=%s&serviceId=1002&centerId=%s&day=%s&fieldType=%s&fieldInfo=%s&ticket=&randStr=&netUserId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
 		APIKey, timestamp, ChannelID, venueId, CenterID, execDay, fieldType, url.QueryEscape(fieldInfo), netUserId, TenantID, openId, apiVersion, sign,
 	)
+}
+
+func warmupDNS() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, "web.xports.cn")
+	if err != nil {
+		debugLog("[预热] DNS 解析失败: %v", err)
+		return
+	}
+	if len(ips) == 0 {
+		debugLog("[预热] DNS 解析结果为空")
+		return
+	}
+	updateDNSIPs(ips)
+	debugLog("[预热] DNS 解析完成，IP 数量: %d", len(ips))
+}
+
+func updateDNSIPs(ips []net.IPAddr) {
+	next := make([]string, 0, len(ips))
+	for _, item := range ips {
+		if item.IP == nil {
+			continue
+		}
+		next = append(next, item.IP.String())
+	}
+	if len(next) == 0 {
+		return
+	}
+	dnsIPMu.Lock()
+	dnsIPs = next
+	atomic.StoreUint32(&dnsIPIndex, 0)
+	dnsIPMu.Unlock()
+}
+
+func pickDNSIP() string {
+	dnsIPMu.RLock()
+	defer dnsIPMu.RUnlock()
+	if len(dnsIPs) == 0 {
+		return ""
+	}
+	idx := atomic.AddUint32(&dnsIPIndex, 1)
+	return dnsIPs[int(idx)%len(dnsIPs)]
 }
 
 func warmupConnection() {
@@ -433,7 +496,6 @@ func main() {
 	defer gCancel()
 
 	rateLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 1)
-	warmupConnection()
 	if startAt != "" {
 		start, err := time.ParseInLocation(time.DateTime, startAt, time.Local)
 		if err != nil {
@@ -450,14 +512,32 @@ func main() {
 		precomputedFieldListURL = buildFieldListURL(targetTimestamp)
 		debugLog("[预计算] 已预生成签名 URL")
 
-		waitDuration := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond).Sub(now)
-		debugLog("等待 %.2f 秒后开始...", waitDuration.Seconds())
-
-		select {
-		case <-time.After(waitDuration):
-		case <-gCtx.Done():
-			return
+		dnsWarmupDuration := start.Add(-DNSWarmupAdvance).Sub(now)
+		if dnsWarmupDuration <= 0 {
+			warmupDNS()
+		} else {
+			debugLog("等待 %.2f 秒后执行 DNS 预热...", dnsWarmupDuration.Seconds())
+			select {
+			case <-time.After(dnsWarmupDuration):
+				warmupDNS()
+			case <-gCtx.Done():
+				return
+			}
 		}
+
+		connWarmupDuration := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond).Sub(time.Now())
+		if connWarmupDuration > 0 {
+			debugLog("等待 %.2f 秒后开始...", connWarmupDuration.Seconds())
+			select {
+			case <-time.After(connWarmupDuration):
+			case <-gCtx.Done():
+				return
+			}
+		}
+		warmupConnection()
+	} else {
+		warmupDNS()
+		warmupConnection()
 	}
 
 	debugLog("开始执行，最大尝试次数: %d, 目标位置: %d", maxAttempts, location)
