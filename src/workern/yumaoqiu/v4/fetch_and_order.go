@@ -59,7 +59,6 @@ var (
 	dnsIPMu                 sync.RWMutex
 )
 
-// debugLog 仅在 debug 模式下输出日志
 func debugLog(format string, v ...interface{}) {
 	if debugMode {
 		log.Printf(format, v...)
@@ -465,7 +464,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 解析 location 为单个整数
 	var err error
 	location, err = strconv.Atoi(locationStr)
 	if err != nil {
@@ -583,5 +581,151 @@ func main() {
 	}
 
 End:
-	log.Printf("执行完成，成功次数: %d", atomic.LoadInt64(&globalSuccessCount))
+	log.Printf("执行完成，账号：%s 成功次数: %d", netUserId, atomic.LoadInt64(&globalSuccessCount))
+	verifyOrders()
+}
+
+type TradeTicket struct {
+	TicketNo      string `json:"ticketNo"`
+	FieldName     string `json:"fieldName"`
+	FieldTypeName string `json:"fieldTypeName"`
+	StartTime     string `json:"startTime"`
+	EndTime       string `json:"endTime"`
+	EffectDate    string `json:"effectDate"`
+	PayMoney      int    `json:"payMoney"`
+	State         string `json:"state"`
+	StartSegment  int    `json:"startSegment"`
+	EndSegment    int    `json:"endSegment"`
+}
+
+type OrderItem struct {
+	AcceptDate      string         `json:"acceptDate"`
+	TradeTicketList []*TradeTicket `json:"tradeTicketList"`
+}
+
+type OrderPageInfo struct {
+	PageNum  int          `json:"pageNum"`
+	PageSize int          `json:"pageSize"`
+	Total    int          `json:"total"`
+	List     []*OrderItem `json:"list"`
+}
+
+type OrderResponse struct {
+	Error    int            `json:"error"`
+	Message  string         `json:"message"`
+	PageInfo *OrderPageInfo `json:"pageInfo"`
+}
+
+func buildGetOrdersURL(timestamp int64) string {
+	params := map[string]string{
+		"pageNo":     "1",
+		"orderState": "2",
+		"netUserId":  netUserId,
+		"openId":     openId,
+	}
+
+	sign := generateSign("/aisports-api/api/order/user/getOrders", params, timestamp)
+
+	return fmt.Sprintf(
+		"https://web.xports.cn/aisports-api/api/order/user/getOrders?apiKey=%s&timestamp=%d&channelId=%s&pageNo=1&orderState=2&netUserId=%s&centerId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
+		APIKey, timestamp, ChannelID, netUserId, CenterID, TenantID, openId, apiVersion, sign,
+	)
+}
+
+func verifyOrders() {
+	const maxRetries = 5
+	const retryInterval = 10
+
+	log.Println("开始验证订单...")
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("第 %d/%d 次验证订单...", attempt, maxRetries)
+
+		timestamp := time.Now().UnixMilli()
+		orderURL := buildGetOrdersURL(timestamp)
+
+		req, err := http.NewRequest("GET", orderURL, nil)
+		if err != nil {
+			log.Printf("创建订单请求失败: %v", err)
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+				continue
+			}
+			return
+		}
+		setRequestHeaders(req)
+		var resp *http.Response
+		resp, err = httpClient.Do(req)
+		if err != nil {
+			log.Printf("获取订单失败: %v", err)
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+				continue
+			}
+			return
+		}
+		var body []byte
+		body, err = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			log.Printf("读取订单响应失败: %v", err)
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+				continue
+			}
+			return
+		}
+
+		debugLog("订单响应: %s", string(body))
+
+		var orderResp OrderResponse
+		if err = json.Unmarshal(body, &orderResp); err != nil {
+			log.Printf("解析订单响应失败: %v", err)
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+				continue
+			}
+			return
+		}
+
+		if orderResp.Error != 0 {
+			log.Printf("❌ 订单接口返回错误: %s", orderResp.Message)
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+				continue
+			}
+			return
+		}
+
+		if len(orderResp.PageInfo.List) == 0 {
+			log.Printf("⚠️  订单列表为空，未找到订单数据")
+			if attempt < maxRetries {
+				log.Printf("等待 %d 秒后重试...", retryInterval)
+				time.Sleep(retryInterval * time.Second)
+			} else {
+				log.Printf("❌ 已达到最大重试次数 %d，仍未找到订单", maxRetries)
+			}
+			log.Printf("✅ 订单验证成功！找到 %d 个订单", len(orderResp.PageInfo.List))
+			continue
+		}
+
+		//for i, order := range orderResp.PageInfo.List {
+		//	log.Printf("  订单 #%d - 接受时间: %s", i+1, order.AcceptDate)
+		//	for j, ticket := range order.TradeTicketList {
+		//		log.Printf("    票据 %d:", j+1)
+		//		log.Printf("      票号: %s", ticket.TicketNo)
+		//		log.Printf("      场地: %s", ticket.FieldName)
+		//		log.Printf("      类型: %s", ticket.FieldTypeName)
+		//		log.Printf("      日期: %s", ticket.EffectDate)
+		//		log.Printf("      时间: %s-%s (时段 %d-%d)", ticket.StartTime, ticket.EndTime, ticket.StartSegment, ticket.EndSegment)
+		//		log.Printf("      金额: %.2f 元", float64(ticket.PayMoney)/100)
+		//		log.Printf("      状态: %s", ticket.State)
+		//	}
+		//}
+		return
+	}
 }
