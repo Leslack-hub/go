@@ -516,7 +516,7 @@ func main() {
 		if dnsWarmupDuration <= 0 {
 			warmupDNS()
 		} else {
-			debugLog("等待 %.2f 秒后执行 DNS 预热...", dnsWarmupDuration.Seconds())
+			log.Printf("等待 %.2f 秒后执行 DNS 预热...", dnsWarmupDuration.Seconds())
 			select {
 			case <-time.After(dnsWarmupDuration):
 				warmupDNS()
@@ -527,7 +527,7 @@ func main() {
 
 		connWarmupDuration := start.Add(-time.Duration(WarmupAdvanceMs) * time.Millisecond).Sub(time.Now())
 		if connWarmupDuration > 0 {
-			debugLog("等待 %.2f 秒后开始...", connWarmupDuration.Seconds())
+			log.Printf("等待 %.2f 秒后开始...", connWarmupDuration.Seconds())
 			select {
 			case <-time.After(connWarmupDuration):
 			case <-gCtx.Done():
