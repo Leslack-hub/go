@@ -399,15 +399,15 @@ func executeOrder(ctx context.Context, orderURL string, userId string) {
 		return
 	}
 	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
 	debugLog("[%s] 下单响应: %s", userId, string(body))
+	_ = resp.Body.Close()
 	var result struct {
 		Message string `json:"message"`
 	}
 
 	if json.Unmarshal(body, &result) == nil {
 		if result.Message == "ok" {
-			log.Printf("🎉 账号 %s 下单请求成功！", userId)
+			debugLog("🎉 账号 %s 下单响应：%s", userId, result.Message)
 		}
 	}
 }
