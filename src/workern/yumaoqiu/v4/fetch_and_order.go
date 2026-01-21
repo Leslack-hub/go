@@ -512,7 +512,8 @@ func main() {
 		venueId, fieldType = "5003000101", "1841"
 	}
 
-	if loc, err := time.LoadLocation("Asia/Shanghai"); err == nil {
+	var loc *time.Location
+	if loc, err = time.LoadLocation("Asia/Shanghai"); err == nil {
 		time.Local = loc
 	}
 
@@ -520,7 +521,7 @@ func main() {
 	orderCtx, orderCancel = context.WithCancel(context.Background())
 	defer orderCancel()
 
-	rateLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 1)
+	rateLimiter = rate.NewLimiter(rate.Every(300*time.Millisecond), 1)
 	if startAt != "" {
 		var start time.Time
 		start, err = time.ParseInLocation(time.DateTime, startAt, time.Local)
