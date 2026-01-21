@@ -471,7 +471,12 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false, "启用debug日志")
 	flag.Parse()
 
-	if execDay == "" || netUserIdStr == "" || locationStr == "" || apiSecret == "" || openId == "" || apiVersion <= 0 {
+	if execDay == "" ||
+		netUserIdStr == "" ||
+		locationStr == "" ||
+		apiSecret == "" ||
+		openId == "" ||
+		apiVersion <= 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
