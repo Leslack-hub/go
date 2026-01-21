@@ -703,7 +703,8 @@ func verifyOrderForUser(userId string) bool {
 		return false
 	}
 	setRequestHeaders(req)
-	resp, err := httpClient.Do(req)
+	var resp *http.Response
+	resp, err = httpClient.Do(req)
 	if err != nil {
 		debugLog("[%s] 获取订单失败: %v", userId, err)
 		return false
