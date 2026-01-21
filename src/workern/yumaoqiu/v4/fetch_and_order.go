@@ -36,27 +36,28 @@ const (
 )
 
 var (
-	execDay          string
-	location         int // v4: 改为单个索引
-	netUserId        string
-	openId           string
-	venueIdIndex     string
-	successExitCount int64
-	apiSecret        string
-	apiVersion       int
-	venueId          string
-	fieldType        string
-	debugMode        bool // debug 模式开关
+	execDay         string
+	location        int      // v4: 改为单个索引
+	netUserIds      []string // 多账号支持
+	openId          string
+	venueIdIndex    string
+	apiSecret       string
+	apiVersion      int
+	venueId         string
+	fieldType       string
+	debugMode       bool // debug 模式开关
+	maxOrderPerUser int  // 每用户下单次数限制
 
-	httpClient              *http.Client
-	gCtx                    context.Context
-	gCancel                 context.CancelFunc
-	globalSuccessCount      int64
+	httpClient  *http.Client
+	orderCtx    context.Context
+	orderCancel context.CancelFunc
+
 	precomputedFieldListURL string
 	rateLimiter             *rate.Limiter
 	dnsIPs                  []string
 	dnsIPIndex              uint32
 	dnsIPMu                 sync.RWMutex
+	userOrderCount          sync.Map // 每用户下单计数
 )
 
 func debugLog(format string, v ...interface{}) {
@@ -172,8 +173,10 @@ func generateSign(apiPath string, params map[string]string, timestamp int64) str
 }
 
 func buildFieldListURL(timestamp int64) string {
+	// 使用第一个账号获取场地列表
+	firstUserId := netUserIds[0]
 	params := map[string]string{
-		"netUserId":       netUserId,
+		"netUserId":       firstUserId,
 		"venueId":         venueId,
 		"serviceId":       "1002",
 		"day":             execDay,
@@ -186,11 +189,11 @@ func buildFieldListURL(timestamp int64) string {
 
 	return fmt.Sprintf(
 		"https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?apiKey=%s&timestamp=%d&channelId=%s&netUserId=%s&venueId=%s&serviceId=1002&day=%s&selectByfullTag=0&centerId=%s&fieldType=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
-		APIKey, timestamp, ChannelID, netUserId, venueId, execDay, CenterID, fieldType, TenantID, openId, apiVersion, sign,
+		APIKey, timestamp, ChannelID, firstUserId, venueId, execDay, CenterID, fieldType, TenantID, openId, apiVersion, sign,
 	)
 }
 
-func buildNewOrderURL(fieldInfo string, timestamp int64) string {
+func buildNewOrderURL(fieldInfo string, timestamp int64, userId string) string {
 	params := map[string]string{
 		"venueId":   venueId,
 		"serviceId": "1002",
@@ -199,7 +202,7 @@ func buildNewOrderURL(fieldInfo string, timestamp int64) string {
 		"fieldInfo": fieldInfo,
 		"ticket":    "",
 		"randStr":   "",
-		"netUserId": netUserId,
+		"netUserId": userId,
 		"openId":    openId,
 	}
 
@@ -207,7 +210,7 @@ func buildNewOrderURL(fieldInfo string, timestamp int64) string {
 
 	return fmt.Sprintf(
 		"https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?apiKey=%s&timestamp=%d&channelId=%s&venueId=%s&serviceId=1002&centerId=%s&day=%s&fieldType=%s&fieldInfo=%s&ticket=&randStr=&netUserId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
-		APIKey, timestamp, ChannelID, venueId, CenterID, execDay, fieldType, url.QueryEscape(fieldInfo), netUserId, TenantID, openId, apiVersion, sign,
+		APIKey, timestamp, ChannelID, venueId, CenterID, execDay, fieldType, url.QueryEscape(fieldInfo), userId, TenantID, openId, apiVersion, sign,
 	)
 }
 
@@ -378,15 +381,11 @@ func extractFieldSegmentIDs(segmentList []*FieldSegment) string {
 	return strings.Join(ids, ",")
 }
 
-func executeOrder(ctx context.Context, orderURL string) {
+func executeOrder(ctx context.Context, orderURL string, userId string) {
 	select {
 	case <-ctx.Done():
 		return
 	default:
-	}
-
-	if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
-		return
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", orderURL, nil)
@@ -401,18 +400,14 @@ func executeOrder(ctx context.Context, orderURL string) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	debugLog("下单响应: %s", string(body))
+	debugLog("[%s] 下单响应: %s", userId, string(body))
 	var result struct {
 		Message string `json:"message"`
 	}
 
 	if json.Unmarshal(body, &result) == nil {
-		if result.Message == "ok" || result.Message == "场地预定中，请勿重复提交" {
-			count := atomic.AddInt64(&globalSuccessCount, 1)
-			log.Printf("🎉 抢票成功！(%d/%d)", count, successExitCount)
-			if count >= successExitCount {
-				gCancel()
-			}
+		if result.Message == "ok" {
+			log.Printf("🎉 账号 %s 下单请求成功！", userId)
 		}
 	}
 }
@@ -425,29 +420,46 @@ func processFieldList(response *APIResponse, timestamp int64) {
 			continue
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := rateLimiter.Wait(gCtx); err != nil {
-				debugLog("速率限制等待失败: %v", err)
+		for _, userId := range netUserIds {
+			select {
+			case <-orderCtx.Done():
 				return
+			default:
 			}
-			orderURL := buildNewOrderURL(fieldInfo, timestamp)
-			executeOrder(gCtx, orderURL)
-		}()
+			// 检查该用户下单次数是否超限
+			countVal, _ := userOrderCount.LoadOrStore(userId, new(int32))
+			count := countVal.(*int32)
+			if int(atomic.LoadInt32(count)) >= maxOrderPerUser {
+				debugLog("[%s] 已达到下单次数限制 %d", userId, maxOrderPerUser)
+				continue
+			}
+			atomic.AddInt32(count, 1)
+
+			wg.Add(1)
+			go func(uid string) {
+				defer wg.Done()
+				if err := rateLimiter.Wait(orderCtx); err != nil {
+					debugLog("速率限制等待失败: %v", err)
+					return
+				}
+				orderURL := buildNewOrderURL(fieldInfo, timestamp, uid)
+				executeOrder(orderCtx, orderURL, uid)
+			}(userId)
+		}
 	}
 	wg.Wait()
 }
 
 func main() {
 	var (
-		times       string
-		startAt     string
-		locationStr string
+		times        string
+		startAt      string
+		locationStr  string
+		netUserIdStr string
 	)
 
 	flag.StringVar(&execDay, "day", "", "天数格式: 20250901")
-	flag.StringVar(&netUserId, "net_user_id", "", "账号")
+	flag.StringVar(&netUserIdStr, "net_user_id", "", "账号（多账号用逗号分隔）")
 	flag.StringVar(&openId, "open_id", "", "openId")
 	flag.StringVar(&apiSecret, "api_secret", "", "API密钥")
 	flag.IntVar(&apiVersion, "version", 0, "签名版本")
@@ -455,15 +467,25 @@ func main() {
 	flag.StringVar(&startAt, "start", "", "开始时间格式 2025-01-01 00:59:59")
 	flag.StringVar(&locationStr, "location", "", "位置（0-based单个索引，如 5）")
 	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆索引")
-	flag.Int64Var(&successExitCount, "ok_count", 1, "成功次数阈值")
+	flag.IntVar(&maxOrderPerUser, "max_order", 30, "每用户下单次数限制")
 	flag.BoolVar(&debugMode, "debug", false, "启用debug日志")
 	flag.Parse()
 
-	if execDay == "" || netUserId == "" || locationStr == "" || apiSecret == "" || openId == "" || apiVersion <= 0 {
+	if execDay == "" || netUserIdStr == "" || locationStr == "" || apiSecret == "" || openId == "" || apiVersion <= 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
+	for _, id := range strings.Split(netUserIdStr, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			netUserIds = append(netUserIds, id)
+		}
+	}
+	if len(netUserIds) == 0 {
+		log.Fatal("至少需要一个 netUserId")
+	}
+	log.Printf("已加载 %d 个账号", len(netUserIds))
 	var err error
 	location, err = strconv.Atoi(locationStr)
 	if err != nil {
@@ -474,8 +496,8 @@ func main() {
 	if maxAttempts <= 0 {
 		maxAttempts = 5
 	}
-	if successExitCount <= 0 {
-		successExitCount = 1
+	if maxOrderPerUser <= 0 {
+		maxOrderPerUser = 3
 	}
 
 	switch venueIdIndex {
@@ -490,12 +512,13 @@ func main() {
 	}
 
 	httpClient = createHTTPClient()
-	gCtx, gCancel = context.WithCancel(context.Background())
-	defer gCancel()
+	orderCtx, orderCancel = context.WithCancel(context.Background())
+	defer orderCancel()
 
 	rateLimiter = rate.NewLimiter(rate.Every(250*time.Millisecond), 1)
 	if startAt != "" {
-		start, err := time.ParseInLocation(time.DateTime, startAt, time.Local)
+		var start time.Time
+		start, err = time.ParseInLocation(time.DateTime, startAt, time.Local)
 		if err != nil {
 			log.Fatalf("时间格式错误: %v", err)
 		}
@@ -518,7 +541,7 @@ func main() {
 			select {
 			case <-time.After(dnsWarmupDuration):
 				warmupDNS()
-			case <-gCtx.Done():
+			case <-orderCtx.Done():
 				return
 			}
 		}
@@ -528,7 +551,7 @@ func main() {
 			log.Printf("等待 %.2f 秒后开始...", connWarmupDuration.Seconds())
 			select {
 			case <-time.After(connWarmupDuration):
-			case <-gCtx.Done():
+			case <-orderCtx.Done():
 				return
 			}
 		}
@@ -539,15 +562,15 @@ func main() {
 	}
 
 	debugLog("开始执行，最大尝试次数: %d, 目标位置: %d", maxAttempts, location)
+
+	var verifyOnce sync.Once
+	var verifyWg sync.WaitGroup
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
-		case <-gCtx.Done():
+		case <-orderCtx.Done():
 			goto End
 		default:
-		}
-
-		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
-			goto End
 		}
 
 		timestamp := time.Now().UnixMilli()
@@ -561,7 +584,8 @@ func main() {
 
 		debugLog("[尝试 %d] 拉取场地列表...", attempt)
 
-		response, err := fetchFieldList(gCtx, fieldListURL)
+		var response *APIResponse
+		response, err = fetchFieldList(orderCtx, fieldListURL)
 		if err != nil {
 			debugLog("[尝试 %d] 拉取失败: %v", attempt, err)
 			continue
@@ -572,17 +596,21 @@ func main() {
 			continue
 		}
 
+		verifyOnce.Do(func() {
+			verifyWg.Add(1)
+			go func() {
+				defer verifyWg.Done()
+				verifyOrders()
+			}()
+		})
+
 		debugLog("[尝试 %d] 成功获取 %d 个场地，开始下单...", attempt, len(response.FieldList))
 		processFieldList(response, timestamp)
-
-		if atomic.LoadInt64(&globalSuccessCount) >= successExitCount {
-			goto End
-		}
 	}
 
 End:
-	log.Printf("执行完成，账号：%s 成功次数: %d", netUserId, atomic.LoadInt64(&globalSuccessCount))
-	verifyOrders()
+	log.Printf("下单流程完成，账号数: %d", len(netUserIds))
+	verifyWg.Wait()
 }
 
 type TradeTicket struct {
@@ -616,11 +644,11 @@ type OrderResponse struct {
 	PageInfo *OrderPageInfo `json:"pageInfo"`
 }
 
-func buildGetOrdersURL(timestamp int64) string {
+func buildGetOrdersURL(timestamp int64, userId string) string {
 	params := map[string]string{
 		"pageNo":     "1",
 		"orderState": "2",
-		"netUserId":  netUserId,
+		"netUserId":  userId,
 		"openId":     openId,
 	}
 
@@ -628,104 +656,77 @@ func buildGetOrdersURL(timestamp int64) string {
 
 	return fmt.Sprintf(
 		"https://web.xports.cn/aisports-api/api/order/user/getOrders?apiKey=%s&timestamp=%d&channelId=%s&pageNo=1&orderState=2&netUserId=%s&centerId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
-		APIKey, timestamp, ChannelID, netUserId, CenterID, TenantID, openId, apiVersion, sign,
+		APIKey, timestamp, ChannelID, userId, CenterID, TenantID, openId, apiVersion, sign,
 	)
 }
 
 func verifyOrders() {
-	const maxRetries = 5
-	const retryInterval = 10
+	const maxRetries = 60
+	const tickInterval = 1 * time.Second
 
 	log.Println("开始验证订单...")
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Printf("第 %d/%d 次验证订单...", attempt, maxRetries)
+		debugLog("第 %d/%d 次验证订单...", attempt, maxRetries)
 
-		timestamp := time.Now().UnixMilli()
-		orderURL := buildGetOrdersURL(timestamp)
-
-		req, err := http.NewRequest("GET", orderURL, nil)
-		if err != nil {
-			log.Printf("创建订单请求失败: %v", err)
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-				continue
+		for _, userId := range netUserIds {
+			if verifyOrderForUser(userId) {
+				log.Printf("✅ 账号 %s 订单验证成功！", userId)
+				orderCancel()
+				return
 			}
-			return
-		}
-		setRequestHeaders(req)
-		var resp *http.Response
-		resp, err = httpClient.Do(req)
-		if err != nil {
-			log.Printf("获取订单失败: %v", err)
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-				continue
-			}
-			return
-		}
-		var body []byte
-		body, err = io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			log.Printf("读取订单响应失败: %v", err)
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-				continue
-			}
-			return
 		}
 
-		debugLog("订单响应: %s", string(body))
-
-		var orderResp OrderResponse
-		if err = json.Unmarshal(body, &orderResp); err != nil {
-			log.Printf("解析订单响应失败: %v", err)
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-				continue
-			}
-			return
+		if attempt < maxRetries {
+			<-ticker.C
+		} else {
+			log.Printf("❌ 已达到最大重试次数 %d，所有账号均未找到订单", maxRetries)
 		}
-
-		if orderResp.Error != 0 {
-			log.Printf("❌ 订单接口返回错误: %s", orderResp.Message)
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-				continue
-			}
-			return
-		}
-
-		if len(orderResp.PageInfo.List) == 0 {
-			log.Printf("⚠️  订单列表为空，未找到订单数据")
-			if attempt < maxRetries {
-				log.Printf("等待 %d 秒后重试...", retryInterval)
-				time.Sleep(retryInterval * time.Second)
-			} else {
-				log.Printf("❌ 已达到最大重试次数 %d，仍未找到订单", maxRetries)
-			}
-			log.Printf("✅ 订单验证成功！找到 %d 个订单", len(orderResp.PageInfo.List))
-			continue
-		}
-
-		//for i, order := range orderResp.PageInfo.List {
-		//	log.Printf("  订单 #%d - 接受时间: %s", i+1, order.AcceptDate)
-		//	for j, ticket := range order.TradeTicketList {
-		//		log.Printf("    票据 %d:", j+1)
-		//		log.Printf("      票号: %s", ticket.TicketNo)
-		//		log.Printf("      场地: %s", ticket.FieldName)
-		//		log.Printf("      类型: %s", ticket.FieldTypeName)
-		//		log.Printf("      日期: %s", ticket.EffectDate)
-		//		log.Printf("      时间: %s-%s (时段 %d-%d)", ticket.StartTime, ticket.EndTime, ticket.StartSegment, ticket.EndSegment)
-		//		log.Printf("      金额: %.2f 元", float64(ticket.PayMoney)/100)
-		//		log.Printf("      状态: %s", ticket.State)
-		//	}
-		//}
-		return
 	}
+}
+
+func verifyOrderForUser(userId string) bool {
+	timestamp := time.Now().UnixMilli()
+	orderURL := buildGetOrdersURL(timestamp, userId)
+
+	req, err := http.NewRequest("GET", orderURL, nil)
+	if err != nil {
+		debugLog("[%s] 创建订单请求失败: %v", userId, err)
+		return false
+	}
+	setRequestHeaders(req)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		debugLog("[%s] 获取订单失败: %v", userId, err)
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		debugLog("[%s] 读取订单响应失败: %v", userId, err)
+		return false
+	}
+
+	debugLog("[%s] 订单响应: %s", userId, string(body))
+
+	var orderResp OrderResponse
+	if err = json.Unmarshal(body, &orderResp); err != nil {
+		debugLog("[%s] 解析订单响应失败: %v", userId, err)
+		return false
+	}
+
+	if orderResp.Error != 0 {
+		debugLog("[%s] 订单接口返回错误: %s", userId, orderResp.Message)
+		return false
+	}
+
+	if orderResp.PageInfo == nil || len(orderResp.PageInfo.List) == 0 {
+		debugLog("[%s] 订单列表为空", userId)
+		return false
+	}
+
+	log.Printf("[%s] 找到 %d 个订单", userId, len(orderResp.PageInfo.List))
+	return true
 }
