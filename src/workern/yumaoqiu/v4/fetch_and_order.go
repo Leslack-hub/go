@@ -173,6 +173,7 @@ func generateSign(apiPath string, params map[string]string, timestamp int64) str
 }
 
 func buildFieldListURL(timestamp int64) string {
+	return "https://web.xports.cn/aisports-api/wechatAPI/venue/fieldList?apiKey=e98ce2565b09ecc0&timestamp=1768962012596&channelId=11&netUserId=2025082802482655&venueId=5003000103&serviceId=1002&day=20260121&selectByfullTag=0&centerId=50030001&fieldType=1837&tenantId=82&openId=o_9oO5UjYM1frKP537iCEGv0JID4&version=30&sign=73b596b6632b09f31dfb29f3daa334aa"
 	// 使用第一个账号获取场地列表
 	firstUserId := netUserIds[0]
 	params := map[string]string{
@@ -468,7 +469,7 @@ func main() {
 	flag.StringVar(&locationStr, "location", "", "位置（0-based单个索引，如 5）")
 	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆索引")
 	flag.IntVar(&maxOrderPerUser, "max_order", 30, "每用户下单次数限制")
-	flag.BoolVar(&debugMode, "debug", false, "启用debug日志")
+	flag.BoolVar(&debugMode, "debug", true, "启用debug日志")
 	flag.Parse()
 
 	if execDay == "" ||
