@@ -819,7 +819,8 @@ func verifyOrderForUser(userId string) []string {
 		debugLog("[%s] 获取订单失败: %v", userId, err)
 		return nil
 	}
-	body, err := io.ReadAll(resp.Body)
+	var body []byte
+	body, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		debugLog("[%s] 读取订单响应失败: %v", userId, err)
