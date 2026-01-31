@@ -21,8 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"workern/yumaoqiu/common"
 )
 
 const (
@@ -464,21 +462,6 @@ func executeOrder(ctx context.Context, orderURL string, userId string) {
 	if n > 0 && strings.Contains(string(buf[:n]), `"message":"ok"`) {
 		debugLog("🎉 账号 %s 下单成功！", userId)
 	}
-}
-
-// executeOrderWithFullResponse 使用公共包执行下单并获取完整响应（供需要完整响应的场景调用）
-func executeOrderWithFullResponse(ctx context.Context, fieldInfo string, timestamp int64, userId string) *common.OrderResult {
-	cfg := &common.OrderConfig{
-		ExecDay:    execDay,
-		VenueId:    venueId,
-		FieldType:  fieldType,
-		OpenId:     openId,
-		ApiSecret:  apiSecret,
-		ApiVersion: apiVersion,
-		DebugMode:  debugMode,
-	}
-	common.SetDebugMode(debugMode)
-	return common.ExecuteOrderWithConfig(ctx, httpClient, cfg, fieldInfo, timestamp, userId)
 }
 
 func processFieldList(response *APIResponse, timestamp int64) {
