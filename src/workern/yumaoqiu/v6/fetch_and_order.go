@@ -44,8 +44,9 @@ var (
 	apiVersion      int
 	venueId         string
 	fieldType       string
-	debugMode       bool // debug 模式开关
-	maxOrderPerUser int  // 每用户下单次数限制
+	debugMode       bool     // debug 模式开关
+	maxOrderPerUser int      // 每用户下单次数限制
+	ecardNos        []string // 会员卡号列表（与 netUserIds 一一对应）
 
 	httpClient  *http.Client
 	orderCtx    context.Context
@@ -222,6 +223,85 @@ func buildNewOrderURL(fieldInfo string, timestamp int64, userId string) string {
 		"https://web.xports.cn/aisports-api/wechatAPI/order/newOrder?apiKey=%s&timestamp=%d&channelId=%s&venueId=%s&serviceId=1002&centerId=%s&day=%s&fieldType=%s&fieldInfo=%s&ticket=&randStr=&netUserId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
 		APIKey, timestamp, ChannelID, venueId, CenterID, execDay, fieldType, url.QueryEscape(fieldInfo), userId, TenantID, openId, apiVersion, sign,
 	)
+}
+
+func buildPayOrderBody(tradeId string, timestamp int64, userId string, userEcardNo string) string {
+	params := map[string]string{
+		"netUserId": userId,
+		"tradeId":   tradeId,
+		"payGroup":  "[]",
+		"ecardNo":   userEcardNo,
+		"openId":    openId,
+	}
+
+	sign := generateSign("/aisports-api/api/pay/payOrder", params, timestamp)
+
+	formData := url.Values{}
+	formData.Set("apiKey", APIKey)
+	formData.Set("timestamp", strconv.FormatInt(timestamp, 10))
+	formData.Set("channelId", ChannelID)
+	formData.Set("netUserId", userId)
+	formData.Set("tradeId", tradeId)
+	formData.Set("payGroup", "[]")
+	formData.Set("ecardNo", userEcardNo)
+	formData.Set("centerId", CenterID)
+	formData.Set("tenantId", TenantID)
+	formData.Set("openId", openId)
+	formData.Set("version", strconv.Itoa(apiVersion))
+	formData.Set("sign", sign)
+
+	return formData.Encode()
+}
+
+func executePayOrder(ctx context.Context, tradeId string, userId string, userIndex int) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+	userEcardNo := ""
+	if userIndex >= 0 && userIndex < len(ecardNos) {
+		userEcardNo = ecardNos[userIndex]
+	}
+	if userEcardNo == "" {
+		debugLog("[%s] 无对应会员卡号，跳过支付", userId)
+		return
+	}
+
+	timestamp := time.Now().UnixMilli()
+	body := buildPayOrderBody(tradeId, timestamp, userId, userEcardNo)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://web.xports.cn/aisports-api/api/pay/payOrder", strings.NewReader(body))
+	if err != nil {
+		debugLog("[%s] 创建支付请求失败: %v", userId, err)
+		return
+	}
+	setRequestHeaders(req)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	var resp *http.Response
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		debugLog("[%s] 支付请求失败: %v", userId, err)
+		return
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	debugLog("[%s] 支付响应: %s", userId, string(respBody))
+
+	var result struct {
+		Error   int    `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(respBody, &result) == nil {
+		if result.Error == 0 {
+			log.Printf("💰 账号 %s 支付成功！tradeId: %s", userId, tradeId)
+		} else {
+			debugLog("[%s] 支付失败: %s", userId, result.Message)
+		}
+	}
 }
 
 func warmupDNS() {
@@ -533,6 +613,8 @@ func main() {
 	flag.StringVar(&locationStr, "location", "", "位置（0-based单个索引，如 5）")
 	flag.StringVar(&venueIdIndex, "venue_id_index", "", "场馆索引")
 	flag.IntVar(&maxOrderPerUser, "max_order", 30, "每用户下单次数限制")
+	var ecardNoStr string
+	flag.StringVar(&ecardNoStr, "ecard_no", "", "会员卡号（多卡号用逗号分隔，与账号顺序对应）")
 	flag.BoolVar(&debugMode, "debug", true, "启用debug日志")
 	flag.Parse()
 
@@ -554,6 +636,16 @@ func main() {
 	}
 	if len(netUserIds) == 0 {
 		log.Fatal("至少需要一个 netUserId")
+	}
+
+	if ecardNoStr != "" {
+		for _, ecard := range strings.Split(ecardNoStr, ",") {
+			ecard = strings.TrimSpace(ecard)
+			ecardNos = append(ecardNos, ecard)
+		}
+		if len(ecardNos) != len(netUserIds) {
+			log.Fatalf("⚠️ 错误: 会员卡号数量(%d)与账号数量(%d)不一致", len(ecardNos), len(netUserIds))
+		}
 	}
 	log.Printf("已加载 %d 个账号", len(netUserIds))
 	var err error
@@ -700,6 +792,7 @@ type TradeTicket struct {
 }
 
 type OrderItem struct {
+	TradeId         string         `json:"tradeId"`
 	AcceptDate      string         `json:"acceptDate"`
 	TradeTicketList []*TradeTicket `json:"tradeTicketList"`
 }
@@ -733,6 +826,16 @@ func buildGetOrdersURL(timestamp int64, userId string) string {
 	)
 }
 
+func payOrdersForUser(userId string, userIndex int, tradeIds []string) {
+	if len(ecardNos) == 0 {
+		return
+	}
+	for _, tradeId := range tradeIds {
+		log.Printf("💳 开始支付订单 %s...", tradeId)
+		executePayOrder(context.Background(), tradeId, userId, userIndex)
+	}
+}
+
 func verifyOrders() {
 	const maxRetries = 60
 	const tickInterval = 1 * time.Second
@@ -744,12 +847,12 @@ func verifyOrders() {
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		debugLog("第 %d/%d 次验证订单...", attempt, maxRetries)
 
-		for _, userId := range netUserIds {
-			if verifyOrderForUser(userId) {
-				log.Printf("✅ 账号 %s 订单验证成功！", userId)
-				orderCancel()
-				return
-			}
+		if userIdx, tradeIds := findFirstUserWithOrders(); tradeIds != nil {
+			userId := netUserIds[userIdx]
+			log.Printf("✅ 账号 %s 订单验证成功，找到 %d 个订单", userId, len(tradeIds))
+			orderCancel()
+			payOrdersForUser(userId, userIdx, tradeIds)
+			return
 		}
 
 		if attempt < maxRetries {
@@ -760,27 +863,36 @@ func verifyOrders() {
 	}
 }
 
-func verifyOrderForUser(userId string) bool {
+func findFirstUserWithOrders() (int, []string) {
+	for idx, userId := range netUserIds {
+		if tradeIds := verifyOrderForUser(userId); len(tradeIds) > 0 {
+			return idx, tradeIds
+		}
+	}
+	return -1, nil
+}
+
+func verifyOrderForUser(userId string) []string {
 	timestamp := time.Now().UnixMilli()
 	orderURL := buildGetOrdersURL(timestamp, userId)
 
 	req, err := http.NewRequest("GET", orderURL, nil)
 	if err != nil {
 		debugLog("[%s] 创建订单请求失败: %v", userId, err)
-		return false
+		return nil
 	}
 	setRequestHeaders(req)
 	var resp *http.Response
 	resp, err = httpClient.Do(req)
 	if err != nil {
 		debugLog("[%s] 获取订单失败: %v", userId, err)
-		return false
+		return nil
 	}
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		debugLog("[%s] 读取订单响应失败: %v", userId, err)
-		return false
+		return nil
 	}
 
 	debugLog("[%s] 订单响应: %s", userId, string(body))
@@ -788,19 +900,26 @@ func verifyOrderForUser(userId string) bool {
 	var orderResp OrderResponse
 	if err = json.Unmarshal(body, &orderResp); err != nil {
 		debugLog("[%s] 解析订单响应失败: %v", userId, err)
-		return false
+		return nil
 	}
 
 	if orderResp.Error != 0 {
 		debugLog("[%s] 订单接口返回错误: %s", userId, orderResp.Message)
-		return false
+		return nil
 	}
 
 	if orderResp.PageInfo == nil || len(orderResp.PageInfo.List) == 0 {
 		debugLog("[%s] 订单列表为空", userId)
-		return false
+		return nil
 	}
 
-	log.Printf("[%s] 找到 %d 个订单", userId, len(orderResp.PageInfo.List))
-	return true
+	var tradeIds []string
+	for _, order := range orderResp.PageInfo.List {
+		if order.TradeId != "" {
+			tradeIds = append(tradeIds, order.TradeId)
+		}
+	}
+
+	log.Printf("[%s] 找到 %d 个订单", userId, len(tradeIds))
+	return tradeIds
 }
