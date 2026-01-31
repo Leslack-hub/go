@@ -225,21 +225,10 @@ func buildPayOrderBody(tradeId string, timestamp int64, userId string, userEcard
 
 	sign := generateSign("/aisports-api/api/pay/payOrder", params, timestamp)
 
-	formData := url.Values{}
-	formData.Set("apiKey", APIKey)
-	formData.Set("timestamp", strconv.FormatInt(timestamp, 10))
-	formData.Set("channelId", ChannelID)
-	formData.Set("netUserId", userId)
-	formData.Set("tradeId", tradeId)
-	formData.Set("payGroup", "[]")
-	formData.Set("ecardNo", userEcardNo)
-	formData.Set("centerId", CenterID)
-	formData.Set("tenantId", TenantID)
-	formData.Set("openId", openId)
-	formData.Set("version", strconv.Itoa(apiVersion))
-	formData.Set("sign", sign)
-
-	return formData.Encode()
+	return fmt.Sprintf(
+		"apiKey=%s&timestamp=%d&channelId=%s&netUserId=%s&tradeId=%s&payGroup=%s&ecardNo=%s&centerId=%s&tenantId=%s&openId=%s&version=%d&sign=%s",
+		APIKey, timestamp, ChannelID, userId, tradeId, url.QueryEscape("[]"), userEcardNo, CenterID, TenantID, openId, apiVersion, sign,
+	)
 }
 
 func executePayOrder(ctx context.Context, tradeId string, userId string, userIndex int) {
