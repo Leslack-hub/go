@@ -1,0 +1,13 @@
+{
+  "active": true,
+  "iteration": 1,
+  "minIterations": 1,
+  "maxIterations": 10,
+  "completionPromise": "COMPLETE",
+  "tasksMode": false,
+  "taskPromise": "READY_FOR_NEXT_TASK",
+  "prompt": "Familiarize yourself with scripts to make them reach the server faster, but note: not more requests. src/workern/yumaoqiu/v6/fetch_and_order.go",
+  "startedAt": "2026-02-02T02:46:23.467Z",
+  "model": "",
+  "agent": "opencode"
+}
