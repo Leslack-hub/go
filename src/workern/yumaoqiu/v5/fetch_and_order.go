@@ -698,23 +698,8 @@ End:
 	verifyWg.Wait()
 }
 
-type TradeTicket struct {
-	TicketNo      string `json:"ticketNo"`
-	FieldName     string `json:"fieldName"`
-	FieldTypeName string `json:"fieldTypeName"`
-	StartTime     string `json:"startTime"`
-	EndTime       string `json:"endTime"`
-	EffectDate    string `json:"effectDate"`
-	PayMoney      int    `json:"payMoney"`
-	State         string `json:"state"`
-	StartSegment  int    `json:"startSegment"`
-	EndSegment    int    `json:"endSegment"`
-}
-
 type OrderItem struct {
-	TradeId         string         `json:"tradeId"`
-	AcceptDate      string         `json:"acceptDate"`
-	TradeTicketList []*TradeTicket `json:"tradeTicketList"`
+	TradeId any `json:"tradeId"`
 }
 
 type OrderPageInfo struct {
@@ -835,8 +820,22 @@ func verifyOrderForUser(userId string) []string {
 
 	var tradeIds []string
 	for _, order := range orderResp.PageInfo.List {
-		if order.TradeId != "" {
-			tradeIds = append(tradeIds, order.TradeId)
+		var tradeIdStr string
+		switch v := order.TradeId.(type) {
+		case string:
+			tradeIdStr = v
+		case float64:
+			tradeIdStr = strconv.FormatInt(int64(v), 10)
+		case int, int32, int64, uint, uint32, uint64:
+			tradeIdStr = fmt.Sprintf("%v", v)
+		default:
+			if v != nil {
+				debugLog("[%s] 未知的 TradeId 类型: %T, 值: %v", userId, v, v)
+			}
+			continue
+		}
+		if tradeIdStr != "" {
+			tradeIds = append(tradeIds, tradeIdStr)
 		}
 	}
 

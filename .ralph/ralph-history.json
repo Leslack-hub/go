@@ -1,55 +1,9 @@
 {
-  "iterations": [
-    {
-      "iteration": 1,
-      "startedAt": "2026-02-02T02:46:34.294Z",
-      "endedAt": "2026-02-02T02:47:11.506Z",
-      "durationMs": 26413,
-      "toolsUsed": {
-        "Glob": 1,
-        "Read": 1,
-        "Todo": 1
-      },
-      "filesModified": [
-        ".ralph/"
-      ],
-      "exitCode": 0,
-      "completionDetected": false,
-      "errors": []
-    },
-    {
-      "iteration": 2,
-      "startedAt": "2026-02-02T02:47:23.703Z",
-      "endedAt": "2026-02-02T02:48:01.082Z",
-      "durationMs": 26386,
-      "toolsUsed": {
-        "Todo": 2,
-        "Read": 1
-      },
-      "filesModified": [],
-      "exitCode": 0,
-      "completionDetected": false,
-      "errors": []
-    },
-    {
-      "iteration": 3,
-      "startedAt": "2026-02-02T02:48:13.412Z",
-      "endedAt": "2026-02-02T02:49:45.162Z",
-      "durationMs": 80512,
-      "toolsUsed": {
-        "Todo": 2,
-        "Read": 1
-      },
-      "filesModified": [],
-      "exitCode": 0,
-      "completionDetected": false,
-      "errors": []
-    }
-  ],
-  "totalDurationMs": 133311,
+  "iterations": [],
+  "totalDurationMs": 0,
   "struggleIndicators": {
     "repeatedErrors": {},
-    "noProgressIterations": 2,
+    "noProgressIterations": 0,
     "shortIterations": 0
   }
 }
