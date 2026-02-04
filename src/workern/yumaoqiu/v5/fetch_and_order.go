@@ -759,7 +759,7 @@ func verifyOrders() {
 	var cancelOnce sync.Once
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		debugLog("第 %d/%d 次验证订单...", attempt, maxRetries)
-		if userIdx, tradeIds := findFirstUserWithOrders(); tradeIds != nil {
+		if userIdx, tradeIds := findFirstUserWithOrders(); len(tradeIds) > 0 {
 			userId := netUserIds[userIdx]
 			log.Printf("✅ 账号 %s 订单验证成功，找到 %d 个订单", userId, len(tradeIds))
 			cancelOnce.Do(func() {
@@ -782,11 +782,33 @@ func verifyOrders() {
 }
 
 func findFirstUserWithOrders() (int, []string) {
-	for idx, userId := range netUserIds {
-		if tradeIds := verifyOrderForUser(userId); len(tradeIds) > 0 {
-			return idx, tradeIds
-		}
+	type result struct {
+		userIdx  int
+		tradeIds []string
 	}
+
+	resultChan := make(chan result, len(netUserIds))
+	var wg sync.WaitGroup
+
+	for idx, userId := range netUserIds {
+		wg.Add(1)
+		go func(userIdx int, uid string) {
+			defer wg.Done()
+			if tradeIds := verifyOrderForUser(uid); len(tradeIds) > 0 {
+				resultChan <- result{userIdx: userIdx, tradeIds: tradeIds}
+			}
+		}(idx, userId)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	if res, ok := <-resultChan; ok {
+		return res.userIdx, res.tradeIds
+	}
+
 	return -1, nil
 }
 
