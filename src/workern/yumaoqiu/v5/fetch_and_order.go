@@ -231,10 +231,10 @@ func buildPayOrderBody(tradeId string, timestamp int64, userId string, userEcard
 	)
 }
 
-func executePayOrder(ctx context.Context, tradeId string, userId string, userIndex int) {
+func executePayOrder(ctx context.Context, tradeId string, userId string, userIndex int) error {
 	select {
 	case <-ctx.Done():
-		return
+		return nil
 	default:
 	}
 
@@ -244,7 +244,7 @@ func executePayOrder(ctx context.Context, tradeId string, userId string, userInd
 	}
 	if userEcardNo == "" {
 		debugLog("[%s] 无对应会员卡号，跳过支付", userId)
-		return
+		return nil
 	}
 
 	timestamp := time.Now().UnixMilli()
@@ -253,7 +253,7 @@ func executePayOrder(ctx context.Context, tradeId string, userId string, userInd
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://web.xports.cn/aisports-api/api/pay/payOrder", strings.NewReader(body))
 	if err != nil {
 		debugLog("[%s] 创建支付请求失败: %v", userId, err)
-		return
+		return err
 	}
 	setRequestHeaders(req)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -262,7 +262,7 @@ func executePayOrder(ctx context.Context, tradeId string, userId string, userInd
 	resp, err = httpClient.Do(req)
 	if err != nil {
 		debugLog("[%s] 支付请求失败: %v", userId, err)
-		return
+		return err
 	}
 	respBody, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
@@ -278,8 +278,10 @@ func executePayOrder(ctx context.Context, tradeId string, userId string, userInd
 			log.Printf("💰 账号 %s 支付成功！tradeId: %s", userId, tradeId)
 		} else {
 			debugLog("[%s] 支付失败: %s", userId, result.Message)
+			return fmt.Errorf(result.Message)
 		}
 	}
+	return nil
 }
 
 func warmupDNS() {
@@ -562,14 +564,16 @@ func main() {
 	}
 
 	if ecardNoStr != "" {
-		for _, ecard := range strings.Split(ecardNoStr, ",") {
-			ecard = strings.TrimSpace(ecard)
-			ecardNos = append(ecardNos, ecard)
-		}
-		if len(ecardNos) != len(netUserIds) {
-			log.Fatalf("⚠️ 错误: 会员卡号数量(%d)与账号数量(%d)不一致", len(ecardNos), len(netUserIds))
-		}
+		log.Fatalf("⚠️ 错误: 会员卡号未设置")
 	}
+	for _, ecard := range strings.Split(ecardNoStr, ",") {
+		ecard = strings.TrimSpace(ecard)
+		ecardNos = append(ecardNos, ecard)
+	}
+	if len(ecardNos) != len(netUserIds) {
+		log.Fatalf("⚠️ 错误: 会员卡号数量(%d)与账号数量(%d)不一致", len(ecardNos), len(netUserIds))
+	}
+
 	var err error
 	location, err = strconv.Atoi(locationStr)
 	if err != nil {
@@ -731,14 +735,18 @@ func buildGetOrdersURL(timestamp int64, userId string) string {
 	)
 }
 
-func payOrdersForUser(userId string, userIndex int, tradeIds []string) {
+func payOrdersForUser(userId string, userIndex int, tradeIds []string) error {
 	if len(ecardNos) == 0 {
-		return
+		return nil
 	}
+	var err error
 	for _, tradeId := range tradeIds {
 		log.Printf("💳 开始支付订单 %s...", tradeId)
-		executePayOrder(context.Background(), tradeId, userId, userIndex)
+		if err = executePayOrder(context.Background(), tradeId, userId, userIndex); err == nil {
+			return nil
+		}
 	}
+	return err
 }
 
 func verifyOrders() {
@@ -748,22 +756,27 @@ func verifyOrders() {
 	log.Println("开始验证订单...")
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
-
+	var cancelOnce sync.Once
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		debugLog("第 %d/%d 次验证订单...", attempt, maxRetries)
-
 		if userIdx, tradeIds := findFirstUserWithOrders(); tradeIds != nil {
 			userId := netUserIds[userIdx]
 			log.Printf("✅ 账号 %s 订单验证成功，找到 %d 个订单", userId, len(tradeIds))
-			orderCancel()
-			payOrdersForUser(userId, userIdx, tradeIds)
-			return
+			cancelOnce.Do(func() {
+				orderCancel()
+			})
+			if err := payOrdersForUser(userId, userIdx, tradeIds); err == nil {
+				return
+			}
 		}
 
 		if attempt < maxRetries {
 			<-ticker.C
 		} else {
 			log.Printf("❌ 已达到最大重试次数 %d，所有账号均未找到订单", maxRetries)
+			cancelOnce.Do(func() {
+				orderCancel()
+			})
 		}
 	}
 }
