@@ -573,7 +573,6 @@ func main() {
 	if len(ecardNos) != len(netUserIds) {
 		log.Fatalf("⚠️ 错误: 会员卡号数量(%d)与账号数量(%d)不一致", len(ecardNos), len(netUserIds))
 	}
-	os.Exit(1)
 	var err error
 	location, err = strconv.Atoi(locationStr)
 	if err != nil {
