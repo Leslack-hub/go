@@ -611,7 +611,7 @@ func main() {
 	orderCtx, orderCancel = context.WithCancel(context.Background())
 	defer orderCancel()
 
-	rateLimiter = rate.NewLimiter(rate.Every(300*time.Millisecond), 1)
+	rateLimiter = rate.NewLimiter(rate.Every(200*time.Millisecond), 5)
 	if startAt != "" {
 		var start time.Time
 		start, err = time.ParseInLocation(time.DateTime, startAt, time.Local)
